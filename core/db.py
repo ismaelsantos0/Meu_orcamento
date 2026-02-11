@@ -3,6 +3,7 @@ import sqlite3
 
 DB_PATH = "data/db.sqlite"
 
+
 def get_conn():
     os.makedirs("data", exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
@@ -17,10 +18,12 @@ def get_conn():
     )
     return conn
 
+
 def get_price(conn, key: str, default: float = 0.0) -> float:
     cur = conn.execute("SELECT valor FROM precos WHERE chave=?", (key,))
     row = cur.fetchone()
     return float(row[0]) if row else float(default)
+
 
 def set_price(conn, key: str, desc: str, value: float) -> None:
     conn.execute(
@@ -34,9 +37,11 @@ def set_price(conn, key: str, desc: str, value: float) -> None:
     )
     conn.commit()
 
+
 def list_prices(conn):
     cur = conn.execute("SELECT chave, descricao, valor FROM precos ORDER BY chave")
     return cur.fetchall()
+
 
 def save_prices_bulk(conn, rows):
     # rows: list[(key, desc, value)]
@@ -50,6 +55,7 @@ def save_prices_bulk(conn, rows):
         [(k, d, float(v)) for (k, d, v) in rows],
     )
     conn.commit()
+
 
 def ensure_seed(conn):
     seeds = [
