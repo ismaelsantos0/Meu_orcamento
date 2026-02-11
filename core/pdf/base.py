@@ -1,6 +1,7 @@
 import os
 from reportlab.lib.pagesizes import A4
 
+
 def draw_header(c, quote: dict, title: str):
     w, h = A4
     logo_path = quote.get("logo_path")
@@ -20,9 +21,3 @@ def draw_header(c, quote: dict, title: str):
 
     c.setFont("Helvetica", 11)
     c.drawString(40, h - 170, f"Cliente: {quote.get('cliente', '')}")
-
-def draw_kv(c, x, y, k: str, v: str, font_size=10):
-    c.setFont("Helvetica-Bold", font_size)
-    c.drawString(x, y, k)
-    c.setFont("Helvetica", font_size)
-    c.drawString(x + 70, y, v)
