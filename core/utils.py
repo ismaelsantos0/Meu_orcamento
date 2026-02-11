@@ -1,8 +1,10 @@
 import re
 from datetime import datetime
 
+
 def ceil_div(a: float, b: float) -> int:
     return int((a + b - 1) // b)
+
 
 def data_br_curta(dt: datetime | None = None) -> str:
     meses = {
@@ -13,11 +15,13 @@ def data_br_curta(dt: datetime | None = None) -> str:
     dt = dt or datetime.now()
     return f"{dt.day} de {meses[dt.month]}"
 
+
 def slug_filename(s: str) -> str:
     s = s.strip()
     s = re.sub(r"[\\/:*?\"<>|]+", "-", s)
     s = re.sub(r"\s+", " ", s)
     return s
+
 
 def make_pdf_name_multi(cliente: str, dt: datetime | None = None) -> str:
     dt = dt or datetime.now()
