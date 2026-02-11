@@ -17,6 +17,7 @@ LOGO_PATH = "assets/logo.png"
 EMPRESA = "RR Smart Soluções"
 WHATSAPP = "97991728899"
 GARANTIA_PADRAO = "6 meses"
+VALIDADE_DIAS_PADRAO = 7
 
 
 # =========================================================
@@ -61,6 +62,52 @@ def list_precos(conn):
     return cur.fetchall()
 
 
+def ensure_seed(conn):
+    """
+    Importante: seu DB fica persistido.
+    Então em vez de "seed só se vazio", aqui a gente garante que
+    novas chaves entram sem apagar o que você já editou.
+    """
+    seeds = [
+        ("haste_reta", "Haste de cerca", 19.0),
+        ("haste_canto", "Haste de canto", 50.0),
+        ("fio_aco_200m", "Fio de aço 200m", 80.0),
+        ("central_sh1800", "Central SH1800", 310.0),
+        ("bateria", "Bateria", 83.0),
+        ("sirene", "Sirene", 2.0),
+        ("concertina_10m", "Concertina 30cm (10m)", 90.0),
+        ("concertina_linear_20m", "Concertina linear (20m)", 53.0),
+        ("kit_isoladores", "Kit isoladores (100 un)", 19.90),
+        ("cabo_alta_50m", "Cabo alta isolação (50m)", 75.0),
+        ("kit_placas", "Kit placas aviso", 19.0),
+        ("kit_aterramento", "Kit aterramento", 165.0),
+
+        # >>> MÃO DE OBRA PROPORCIONAL (EDITÁVEL)
+        # Cerca elétrica: base + (R$/m * perímetro)
+        ("mao_cerca_base", "Mão de obra — cerca elétrica (taxa base)", 250.0),
+        ("mao_cerca_por_m", "Mão de obra — cerca elétrica (R$/metro)", 18.0),
+
+        # Concertina (quando adiciona no muro): base + (R$/m * perímetro)
+        ("mao_concertina_base", "Mão de obra — concertina (taxa base)", 150.0),
+        ("mao_concertina_por_m", "Mão de obra — concertina (R$/metro)", 8.0),
+
+        # Concertina linear eletrificada: base + (R$/m * perímetro)
+        ("mao_linear_base", "Mão de obra — concertina linear (taxa base)", 200.0),
+        ("mao_linear_por_m", "Mão de obra — concertina linear (R$/metro)", 10.0),
+
+        # Outros (depois você ajusta como quiser)
+        ("mao_obra_cftv_inst", "Mão de obra — CFTV (instalação)", 0.0),
+        ("mao_obra_cftv_man", "Mão de obra — CFTV (manutenção)", 0.0),
+        ("mao_obra_motor_inst", "Mão de obra — Motor (instalação)", 0.0),
+        ("mao_obra_motor_man", "Mão de obra — Motor (manutenção)", 0.0),
+    ]
+
+    for k, d, v in seeds:
+        cur = conn.execute("SELECT 1 FROM precos WHERE chave=?", (k,))
+        if not cur.fetchone():
+            set_preco(conn, k, d, v)
+
+
 # =========================================================
 # PDF helpers
 # =========================================================
@@ -85,12 +132,11 @@ def gerar_pdf_orcamento(
     total: float,
     pagamento: str,
     garantia: str,
-    validade_dias: int = 7,
+    validade_dias: int = VALIDADE_DIAS_PADRAO,
 ):
     c = canvas.Canvas(out_path, pagesize=A4)
     w, h = A4
 
-    # Header
     if os.path.exists(LOGO_PATH):
         c.drawImage(LOGO_PATH, 40, h - 120, width=80, height=80, mask="auto")
 
@@ -101,7 +147,6 @@ def gerar_pdf_orcamento(
     c.drawString(140, h - 88, f"WhatsApp: {WHATSAPP}")
     c.drawString(140, h - 104, f"Data: {datetime.now().strftime('%d/%m/%Y')}")
 
-    # Cliente
     y = h - 150
     c.setFont("Helvetica-Bold", 12)
     c.drawString(40, y, "Orçamento")
@@ -112,7 +157,6 @@ def gerar_pdf_orcamento(
     y -= 16
     c.drawString(40, y, f"Serviço: {servico}")
 
-    # Entrega
     y -= 28
     c.setFont("Helvetica-Bold", 11)
     c.drawString(40, y, "O que será entregue")
@@ -126,7 +170,6 @@ def gerar_pdf_orcamento(
         c.drawString(40, y, line[:110])
         y -= 14
 
-    # Itens
     y -= 8
     c.setFont("Helvetica-Bold", 11)
     c.drawString(40, y, "Composição (materiais / serviços)")
@@ -146,12 +189,9 @@ def gerar_pdf_orcamento(
         if y < 120:
             c.showPage()
             y = h - 70
-
-            # Re-header simples na nova página
             c.setFont("Helvetica-Bold", 12)
             c.drawString(40, y, "Composição (continuação)")
             y -= 18
-
             c.setFont("Helvetica-Bold", 9)
             c.drawString(40, y, "Descrição")
             c.drawString(300, y, "Qtd")
@@ -168,7 +208,6 @@ def gerar_pdf_orcamento(
         c.drawRightString(550, y, brl(float(sub)).replace("R$ ", ""))
         y -= 14
 
-    # Totais
     y -= 6
     c.line(40, y, 550, y)
     y -= 18
@@ -184,7 +223,6 @@ def gerar_pdf_orcamento(
     c.setFont("Helvetica-Bold", 12)
     c.drawRightString(550, y, f"TOTAL: {brl(total)}")
 
-    # Pagamento/garantia
     y -= 28
     c.setFont("Helvetica-Bold", 11)
     c.drawString(40, y, "Condições")
@@ -201,16 +239,17 @@ def gerar_pdf_orcamento(
 
 
 # =========================================================
-# PDF RESUMIDO (pra enviar pro cliente)
+# PDF RESUMIDO (mais bonito, com texto explicativo)
 # =========================================================
 def gerar_pdf_resumido(
     out_path: str,
     cliente: str,
     servico: str,
+    resumo_texto: str,
     valor_total: float,
     pagamento: str,
     garantia: str,
-    validade_dias: int = 7,
+    validade_dias: int = VALIDADE_DIAS_PADRAO,
 ):
     c = canvas.Canvas(out_path, pagesize=A4)
     w, h = A4
@@ -221,45 +260,61 @@ def gerar_pdf_resumido(
 
     c.setFont("Helvetica-Bold", 18)
     c.drawString(140, h - 70, EMPRESA)
-
     c.setFont("Helvetica", 10)
     c.drawString(140, h - 90, f"WhatsApp: {WHATSAPP}")
     c.drawString(140, h - 105, f"Data: {datetime.now().strftime('%d/%m/%Y')}")
 
-    # Corpo
-    y = h - 170
+    # Título
+    y = h - 165
     c.setFont("Helvetica-Bold", 14)
     c.drawString(40, y, "Orçamento (Resumo)")
-    y -= 28
+    y -= 24
 
-    c.setFont("Helvetica", 12)
+    c.setFont("Helvetica", 11)
     c.drawString(40, y, f"Cliente: {cliente}")
-    y -= 18
+    y -= 16
     c.drawString(40, y, f"Serviço: {servico}")
 
-    # Destaque do valor
-    y -= 40
-    c.setFont("Helvetica-Bold", 26)
-    c.drawString(40, y, "VALOR FINAL")
+    # Texto explicativo (o que é / o que inclui)
+    y -= 26
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(40, y, "Resumo do serviço")
+    y -= 16
+    c.setFont("Helvetica", 10)
+    for line in resumo_texto.split("\n"):
+        c.drawString(40, y, line[:115])
+        y -= 13
+
+    # Caixa do valor (simples, mas com cara melhor)
+    y -= 18
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(40, y, "Valor final")
     y -= 34
     c.setFont("Helvetica-Bold", 34)
     c.drawString(40, y, brl(valor_total))
 
-    # Condições curtas
-    y -= 55
-    c.setFont("Helvetica-Bold", 12)
+    # Condições + CTA
+    y -= 50
+    c.setFont("Helvetica-Bold", 11)
     c.drawString(40, y, "Condições")
-    y -= 18
-    c.setFont("Helvetica", 11)
+    y -= 16
+    c.setFont("Helvetica", 10)
     c.drawString(40, y, f"Pagamento: {pagamento}")
     y -= 14
     c.drawString(40, y, f"Garantia: {garantia} | Validade: {validade_dias} dias")
+
+    y -= 26
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(40, y, "Fechamento")
+    y -= 16
+    c.setFont("Helvetica", 10)
+    c.drawString(40, y, f"Se quiser, posso agendar a instalação e iniciar após a entrada. Fale comigo no WhatsApp: {WHATSAPP}")
 
     c.save()
 
 
 # =========================================================
-# ORÇAMENTO helpers (sem nonlocal)
+# ORÇAMENTO helpers
 # =========================================================
 def add_item(itens, subtotal, conn, chave, qtd, label=None):
     unit = get_preco(conn, chave)
@@ -274,15 +329,20 @@ def ceil_div(a, b):
 
 
 def calc_hastes(perimetro, espacamento, cantos=4):
-    # Ex.: 36/2.5=14.4 -> arredonda p/ cima -> 15 intervalos -> 16 hastes
     intervalos = int(perimetro / espacamento)
     if (perimetro / espacamento) > intervalos:
         intervalos += 1
     hastes_total = intervalos + 1
-
     hastes_canto = int(cantos)
     hastes_retas = max(0, hastes_total - hastes_canto)
     return hastes_total, hastes_retas, hastes_canto
+
+
+def mao_obra_por_m(conn, base_key: str, por_m_key: str, perimetro: float):
+    base = get_preco(conn, base_key, default=0.0)
+    por_m = get_preco(conn, por_m_key, default=0.0)
+    total = base + (perimetro * por_m)
+    return base, por_m, total
 
 
 # =========================================================
@@ -292,33 +352,9 @@ st.set_page_config(page_title=APP_TITLE, page_icon="🧾", layout="wide")
 st.title("🧾 Gerador de Orçamentos — RR Smart Soluções")
 
 conn = db()
-menu = st.sidebar.radio("Menu", ["Gerar orçamento", "Editar preços"])
+ensure_seed(conn)
 
-# Seed inicial
-if not list_precos(conn):
-    seeds = [
-        ("haste_reta", "Haste de cerca", 19.0),
-        ("haste_canto", "Haste de canto", 50.0),
-        ("fio_aco_200m", "Fio de aço 200m", 80.0),
-        ("central_sh1800", "Central SH1800", 310.0),
-        ("bateria", "Bateria", 83.0),
-        ("sirene", "Sirene", 2.0),
-        ("concertina_10m", "Concertina 30cm (10m)", 90.0),
-        ("concertina_linear_20m", "Concertina linear (20m)", 53.0),
-        ("kit_isoladores", "Kit isoladores (100 un)", 19.90),
-        ("cabo_alta_50m", "Cabo alta isolação (50m)", 75.0),
-        ("kit_placas", "Kit placas aviso", 19.0),
-        ("kit_aterramento", "Kit aterramento", 165.0),
-        ("mao_obra_cerca", "Mão de obra — cerca elétrica", 900.0),
-        ("mao_obra_concertina", "Mão de obra — concertina", 300.0),
-        ("mao_obra_concertina_linear", "Mão de obra — concertina linear", 250.0),
-        ("mao_obra_cftv_inst", "Mão de obra — CFTV (instalação)", 0.0),
-        ("mao_obra_cftv_man", "Mão de obra — CFTV (manutenção)", 0.0),
-        ("mao_obra_motor_inst", "Mão de obra — Motor (instalação)", 0.0),
-        ("mao_obra_motor_man", "Mão de obra — Motor (manutenção)", 0.0),
-    ]
-    for k, d, v in seeds:
-        set_preco(conn, k, d, v)
+menu = st.sidebar.radio("Menu", ["Gerar orçamento", "Editar preços"])
 
 if menu == "Editar preços":
     st.subheader("💲 Tabela de preços (editável)")
@@ -369,20 +405,17 @@ else:
 
     st.divider()
 
-    # Mantém o design: só adiciona um radio simples
     tipo_relatorio = st.radio(
         "Tipo de relatório",
-        ["Completo (com composição)", "Resumido (só serviço + valor)"],
+        ["Completo (com composição)", "Resumido (mais bonito, para o cliente)"],
         horizontal=True,
     )
 
-    # Defaults
     perimetro = 36.0
     fios = 6
     espacamento = 2.5
     cantos = 4
 
-    # Campos específicos
     if "Cerca" in tipo or "Concertina" in tipo:
         c1, c2, c3, c4 = st.columns(4)
         with c1:
@@ -415,19 +448,18 @@ else:
 
         itens = []
         subtotal = 0.0
-        resumo = "Serviço conforme combinado."
 
-        # =====================================================
+        # Texto do resumo do PDF resumido
+        resumo_cliente = ""
+
+        # =========================
         # CERCA ELÉTRICA (instalação)
-        # =====================================================
+        # =========================
         if tipo.startswith("Cerca elétrica") and "manutenção" not in tipo:
             _, hastes_retas, hastes_canto = calc_hastes(perimetro, espacamento, cantos=int(cantos))
-
-            # Fio total
             arame_m = perimetro * fios
             rolos_fio = ceil_div(arame_m, 200)
 
-            # Materiais base
             subtotal = add_item(itens, subtotal, conn, "haste_reta", hastes_retas, "Haste reta")
             subtotal = add_item(itens, subtotal, conn, "haste_canto", hastes_canto, "Haste de canto")
             subtotal = add_item(itens, subtotal, conn, "fio_aco_200m", rolos_fio, "Fio de aço (rolo 200m)")
@@ -435,39 +467,56 @@ else:
             subtotal = add_item(itens, subtotal, conn, "bateria", 1, "Bateria")
             subtotal = add_item(itens, subtotal, conn, "sirene", 1, "Sirene")
 
-            # Complementos
             subtotal = add_item(itens, subtotal, conn, "kit_isoladores", 1, "Kit isoladores (100 un)")
             subtotal = add_item(itens, subtotal, conn, "cabo_alta_50m", 1, "Cabo de alta isolação (50m)")
             subtotal = add_item(itens, subtotal, conn, "kit_placas", 1, "Placas de aviso (kit)")
             subtotal = add_item(itens, subtotal, conn, "kit_aterramento", 1, "Kit aterramento")
 
-            # Mão de obra
-            mao = get_preco(conn, "mao_obra_cerca")
-            itens.append(("Mão de obra (instalação)", 1, mao, mao))
-            subtotal += mao
+            # Mão de obra proporcional
+            base, por_m, mao_total = mao_obra_por_m(conn, "mao_cerca_base", "mao_cerca_por_m", perimetro)
+
+            # Quebra em 2 linhas para ficar claro no completo
+            if base > 0:
+                itens.append(("Mão de obra (taxa base)", 1, base, base))
+                subtotal += base
+            itens.append(("Mão de obra (R$/metro)", round(perimetro, 1), por_m, perimetro * por_m))
+            subtotal += perimetro * por_m
 
             # Concertina extra
             if "+ concertina" in tipo:
                 rolos = ceil_div(perimetro, 10)
                 subtotal = add_item(itens, subtotal, conn, "concertina_10m", rolos, "Concertina 30cm (rolo 10m)")
 
-                mao2 = get_preco(conn, "mao_obra_concertina")
-                itens.append(("Mão de obra (instalação concertina)", 1, mao2, mao2))
-                subtotal += mao2
+                b2, p2, mao2_total = mao_obra_por_m(conn, "mao_concertina_base", "mao_concertina_por_m", perimetro)
+                if b2 > 0:
+                    itens.append(("Mão de obra concertina (taxa base)", 1, b2, b2))
+                    subtotal += b2
+                itens.append(("Mão de obra concertina (R$/metro)", round(perimetro, 1), p2, perimetro * p2))
+                subtotal += perimetro * p2
 
-                resumo = (
-                    f"Instalação completa em {perimetro:.0f}m de perímetro, com {fios} fios e hastes a cada {espacamento}m,\n"
-                    "incluindo concertina, central, bateria, sirene, aterramento, placas, testes e regulagem."
+                resumo_completo = (
+                    f"Instalação completa em {perimetro:.0f}m, com {fios} fios e hastes a cada {espacamento}m.\n"
+                    "Inclui concertina, central, bateria, sirene, aterramento, placas, testes e regulagem."
+                )
+                resumo_cliente = (
+                    f"Instalação completa de cerca elétrica + concertina em {perimetro:.0f}m.\n"
+                    f"Cerca com {fios} fios, instalação bem tensionada e sistema entregue testado.\n"
+                    "Inclui central, bateria, sirene, aterramento e placas de aviso."
                 )
             else:
-                resumo = (
-                    f"Instalação completa em {perimetro:.0f}m de perímetro, com {fios} fios e hastes a cada {espacamento}m.\n"
-                    "Sistema entregue funcionando, com central, bateria, sirene, aterramento, placas, testes e regulagem."
+                resumo_completo = (
+                    f"Instalação completa em {perimetro:.0f}m, com {fios} fios e hastes a cada {espacamento}m.\n"
+                    "Inclui central, bateria, sirene, aterramento, placas, testes e regulagem."
+                )
+                resumo_cliente = (
+                    f"Instalação completa de cerca elétrica em {perimetro:.0f}m.\n"
+                    f"Cerca com {fios} fios, hastes a cada {espacamento}m, tudo alinhado e tensionado.\n"
+                    "Sistema entregue funcionando com central, bateria, sirene, aterramento e placas."
                 )
 
-        # =====================================================
-        # CONCERTINA LINEAR ELETRIFICADA (substitui fios)
-        # =====================================================
+        # =========================
+        # CONCERTINA LINEAR ELETRIFICADA
+        # =========================
         elif tipo.startswith("Concertina linear eletrificada"):
             rolos = ceil_div(perimetro, 20)
 
@@ -479,72 +528,92 @@ else:
             subtotal = add_item(itens, subtotal, conn, "kit_aterramento", 1, "Kit aterramento")
             subtotal = add_item(itens, subtotal, conn, "kit_placas", 1, "Placas de aviso (kit)")
 
-            mao = get_preco(conn, "mao_obra_concertina_linear")
-            itens.append(("Mão de obra (instalação)", 1, mao, mao))
-            subtotal += mao
+            # Mão de obra proporcional
+            base, por_m, mao_total = mao_obra_por_m(conn, "mao_linear_base", "mao_linear_por_m", perimetro)
+            if base > 0:
+                itens.append(("Mão de obra (taxa base)", 1, base, base))
+                subtotal += base
+            itens.append(("Mão de obra (R$/metro)", round(perimetro, 1), por_m, perimetro * por_m))
+            subtotal += perimetro * por_m
 
-            resumo = (
-                f"Instalação de concertina linear eletrificada em {perimetro:.0f}m de perímetro.\n"
-                "A própria concertina faz a função de eletrificação (sem fios tradicionais), mantendo central, bateria,\n"
-                "sirene e sistema de alarme, com aterramento, placas, testes e regulagem."
+            resumo_completo = (
+                f"Instalação de concertina linear eletrificada em {perimetro:.0f}m.\n"
+                "A própria concertina faz a eletrificação (sem fios tradicionais), mantendo central, bateria e sirene.\n"
+                "Inclui aterramento, placas, testes e regulagem."
+            )
+            resumo_cliente = (
+                f"Instalação de concertina linear eletrificada em {perimetro:.0f}m.\n"
+                "A concertina já eletrifica (dispensa fios), mantendo central, bateria, sirene e alarme.\n"
+                "Entrega com aterramento correto, placas e testes finais."
             )
 
-        # =====================================================
-        # MANUTENÇÃO CERCA (simples)
-        # =====================================================
+        # =========================
+        # MANUTENÇÃO / OUTROS
+        # =========================
         elif tipo == "Cerca elétrica (manutenção)":
-            mao = get_preco(conn, "mao_obra_cerca", default=300.0)
+            mao = get_preco(conn, "mao_cerca_base", default=300.0)  # usa base como referência
             itens.append(("Manutenção de cerca elétrica (diagnóstico, ajustes, testes)", 1, mao, mao))
             subtotal = mao
-            resumo = (
-                "Manutenção e revisão do sistema de cerca elétrica: diagnóstico, reaperto, ajustes, teste de energia,\n"
-                "verificação de aterramento, checagem de sirene/central e correção de pontos críticos."
+            resumo_completo = (
+                "Manutenção e revisão do sistema: diagnóstico, reaperto, ajustes, teste de energia,\n"
+                "checagem de aterramento, sirene/central e correções necessárias."
+            )
+            resumo_cliente = (
+                "Manutenção de cerca elétrica: revisão geral, ajustes e testes.\n"
+                "Entrega com o sistema funcionando corretamente."
             )
 
-        # =====================================================
-        # OUTROS SERVIÇOS (só mão de obra)
-        # =====================================================
         elif tipo == "Câmeras (instalação)":
             mao = get_preco(conn, "mao_obra_cftv_inst", default=0.0)
             itens.append(("Instalação de câmeras (mão de obra)", 1, mao, mao))
             subtotal = mao
-            resumo = "Instalação de sistema de câmeras conforme definido, com testes e orientação de uso."
+            resumo_completo = "Instalação de sistema de câmeras conforme definido, com testes e orientação."
+            resumo_cliente = "Instalação de câmeras com testes e orientação de uso."
 
         elif tipo == "Câmeras (manutenção)":
             mao = get_preco(conn, "mao_obra_cftv_man", default=0.0)
             itens.append(("Manutenção de câmeras (mão de obra)", 1, mao, mao))
             subtotal = mao
-            resumo = "Manutenção e ajustes no sistema de câmeras: revisão, testes e correções necessárias."
+            resumo_completo = "Manutenção e ajustes no sistema de câmeras, com testes e correções."
+            resumo_cliente = "Manutenção de câmeras com revisão e testes."
 
         elif tipo == "Motor de portão (instalação)":
             mao = get_preco(conn, "mao_obra_motor_inst", default=0.0)
             itens.append(("Instalação de motor de portão (mão de obra)", 1, mao, mao))
             subtotal = mao
-            resumo = "Instalação de motor de portão com configuração e testes finais."
+            resumo_completo = "Instalação de motor de portão com configuração e testes finais."
+            resumo_cliente = "Instalação de motor de portão com configuração e testes."
 
         elif tipo == "Motor de portão (manutenção)":
             mao = get_preco(conn, "mao_obra_motor_man", default=0.0)
             itens.append(("Manutenção de motor de portão (mão de obra)", 1, mao, mao))
             subtotal = mao
-            resumo = "Manutenção do motor de portão: diagnóstico, ajustes e testes de funcionamento."
+            resumo_completo = "Manutenção do motor: diagnóstico, ajustes e testes."
+            resumo_cliente = "Manutenção do motor de portão com ajustes e testes."
 
-        # =====================================================
+        else:
+            resumo_completo = "Serviço conforme combinado."
+            resumo_cliente = "Serviço conforme combinado."
+
+        # =========================
         # DESCONTO
-        # =====================================================
+        # =========================
         desconto_valor = 0.0
         desconto_label = "—"
         if desconto_tipo == "%":
             desconto_label = f"{desconto_val:.2f}%"
             desconto_valor = subtotal * (desconto_val / 100.0)
+        elif desconto_tipo ==ória:
+            pass  # (mantém compatibilidade caso você copie/edite por engano)
         elif desconto_tipo == "R$":
             desconto_label = "R$"
             desconto_valor = min(desconto_val, subtotal)
 
         total = max(0.0, subtotal - desconto_valor)
 
-        # =====================================================
-        # GERAÇÃO DO ARQUIVO (2 opções)
-        # =====================================================
+        # =========================
+        # OUTPUT
+        # =========================
         os.makedirs("output", exist_ok=True)
         filename_base = f"orcamento_{cliente.strip().replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
@@ -552,7 +621,7 @@ else:
         if telefone.strip():
             cliente_fmt = f"{cliente_fmt}  ({telefone.strip()})"
 
-        if tipo_relatorio == "Resumido (só serviço + valor)":
+        if tipo_relatorio.startswith("Resumido"):
             filename = f"{filename_base}_RESUMO.pdf"
             out = os.path.join("output", filename)
 
@@ -560,10 +629,11 @@ else:
                 out_path=out,
                 cliente=cliente_fmt,
                 servico=tipo,
+                resumo_texto=resumo_cliente,
                 valor_total=total,
                 pagamento=pagamento,
                 garantia=garantia,
-                validade_dias=7,
+                validade_dias=VALIDADE_DIAS_PADRAO,
             )
         else:
             filename = f"{filename_base}_COMPLETO.pdf"
@@ -573,7 +643,7 @@ else:
                 out_path=out,
                 cliente=cliente_fmt,
                 servico=tipo,
-                resumo_entrega=resumo,
+                resumo_entrega=resumo_completo,
                 itens=itens,
                 subtotal=subtotal,
                 desconto_label=desconto_label,
@@ -581,7 +651,7 @@ else:
                 total=total,
                 pagamento=pagamento,
                 garantia=garantia,
-                validade_dias=7,
+                validade_dias=VALIDADE_DIAS_PADRAO,
             )
 
         st.success("PDF gerado!")
