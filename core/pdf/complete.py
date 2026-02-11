@@ -53,8 +53,11 @@ def render_complete_pdf(out_path: str, quote: dict):
     c.setFont("Helvetica-Bold", 10)
     c.drawRightString(550, y, f"Subtotal: {brl(float(quote['subtotal']))}")
     y -= 14
-    if quote["desconto_valor"] > 0:
-        c.drawRightString(550, y, f"Desconto ({quote['desconto_label']}): - {brl(float(quote['desconto_valor']))}")
+    if float(quote["desconto_valor"]) > 0:
+        c.drawRightString(
+            550, y,
+            f"Desconto ({quote['desconto_label']}): - {brl(float(quote['desconto_valor']))}"
+        )
         y -= 14
 
     c.setFont("Helvetica-Bold", 12)
@@ -128,7 +131,6 @@ def render_complete_pdf(out_path: str, quote: dict):
                 y -= 10
                 c.line(40, y, 550, y)
                 y -= 14
-
                 c.setFont("Helvetica", 9)
 
             c.drawString(40, y, str(desc)[:45])
