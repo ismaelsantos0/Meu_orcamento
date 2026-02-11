@@ -2,14 +2,13 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
 from core.money import brl
+from core.pdf.base import draw_header
 
 
 def render_summary_pdf(out_path: str, quote: dict):
     c = canvas.Canvas(out_path, pagesize=A4)
     w, h = A4
 
-    # Header simples
-    from core.pdf.base import draw_header
     draw_header(c, quote, "Orçamento (Resumo)")
 
     y = h - 210
