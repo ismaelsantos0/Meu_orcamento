@@ -93,9 +93,12 @@ def ensure_seed(conn):
         ("mao_linear_base", "Mão de obra concertina linear (taxa base)", 200.0),
         ("mao_linear_por_m", "Mão de obra concertina linear (R$/metro)", 10.0),
 
-        # Outras mãos de obra (fixas por enquanto)
-        ("mao_cftv_inst", "Mão de obra CFTV (instalação)", 0.0),
-        ("mao_cftv_man", "Mão de obra CFTV (manutenção)", 0.0),
+        # CFTV - NOVO (mão de obra detalhada)
+        ("mao_cftv_dvr", "Mão de obra CFTV (instalação do DVR)", 200.0),
+        ("mao_cftv_por_camera_inst", "Mão de obra CFTV (instalação por câmera)", 120.0),
+        ("mao_cftv_por_camera_defeito", "Mão de obra CFTV (manutenção por câmera com defeito)", 80.0),
+
+        # Outros (fixos por enquanto)
         ("mao_motor_inst", "Mão de obra Motor (instalação)", 0.0),
         ("mao_motor_man", "Mão de obra Motor (manutenção)", 0.0),
         ("mao_cerca_man", "Mão de obra Cerca (manutenção)", 0.0),
@@ -127,12 +130,6 @@ def ceil_div(a: float, b: float) -> int:
 
 
 def calc_hastes(perimetro: float, espacamento: float, cantos: int):
-    """
-    Regra correta:
-    - número de vãos = ceil(perímetro / espaçamento)
-    - número de hastes = vãos + 1
-    - retas = total - cantos
-    """
     vaos = ceil_div(perimetro, espacamento)
     total = vaos + 1
     cantos = int(cantos)
@@ -351,7 +348,7 @@ ensure_seed(conn)
 menu = st.sidebar.radio("Menu", ["Gerar orçamento", "Editar preços"])
 
 # -------------------------
-# EDITAR PREÇOS (mantém tela)
+# EDITAR PREÇOS
 # -------------------------
 if menu == "Editar preços":
     st.subheader("💲 Tabela de preços (editável)")
@@ -378,7 +375,7 @@ if menu == "Editar preços":
             st.success("Preços atualizados!")
 
 # -------------------------
-# GERAR ORÇAMENTO (mantém tela)
+# GERAR ORÇAMENTO
 # -------------------------
 else:
     st.subheader("🧾 Gerar orçamento (PDF)")
@@ -405,7 +402,6 @@ else:
 
     st.divider()
 
-    # MESMO DESIGN: só adiciona opção de PDF, sem bagunçar
     tipo_relatorio = st.radio(
         "Tipo de relatório",
         ["Completo (com composição)", "Resumido (bonito, para o cliente)"],
@@ -418,20 +414,27 @@ else:
     espacamento = 2.5
     cantos = 4
 
+    # Campos de cerca/concertina
     if "Cerca" in tipo or "Concertina" in tipo:
         c1, c2, c3, c4 = st.columns(4)
         with c1:
             perimetro = st.number_input("Perímetro (m)", value=36.0, min_value=1.0, step=1.0)
         with c2:
-            if tipo.startswith("Concertina linear"):
-                st.number_input("Qtd. fios", value=0, disabled=True)
-                fios = 0
-            else:
-                fios = st.number_input("Qtd. fios", value=6, min_value=1, step=1)
+            fios = st.number_input("Qtd. fios", value=6, min_value=1, step=1)
         with c3:
             espacamento = st.number_input("Espaçamento (m)", value=2.5, min_value=0.5, step=0.1)
         with c4:
             cantos = st.number_input("Qtd. cantos", value=4, min_value=1, step=1)
+
+    # Campos extras para CFTV (sem mudar o layout geral)
+    qtd_cameras = None
+    qtd_defeituosas = None
+
+    if tipo == "Câmeras (instalação)":
+        qtd_cameras = st.number_input("Quantidade de câmeras", value=4, min_value=1, step=1)
+
+    if tipo == "Câmeras (manutenção)":
+        qtd_defeituosas = st.number_input("Câmeras com defeito", value=1, min_value=1, step=1)
 
     desconto_tipo = st.selectbox("Desconto", ["Sem desconto", "%", "R$"])
     desconto_val = 0.0
@@ -458,14 +461,13 @@ else:
             cliente_fmt = f"{cliente_fmt}  ({telefone.strip()})"
 
         # =====================================================
-        # CERCA (instalação) - com materiais completos
+        # CERCA (instalação)
         # =====================================================
         if tipo.startswith("Cerca elétrica") and "manutenção" not in tipo:
             _, hastes_retas, hastes_canto = calc_hastes(perimetro, espacamento, cantos=int(cantos))
             arame_m = perimetro * fios
             rolos_fio = ceil_div(arame_m, 200)
 
-            # Materiais e complementos
             subtotal = add_item(itens, subtotal, conn, "haste_reta", hastes_retas, "Haste reta")
             subtotal = add_item(itens, subtotal, conn, "haste_canto", hastes_canto, "Haste de canto")
             subtotal = add_item(itens, subtotal, conn, "fio_aco_200m", rolos_fio, "Fio de aço (rolo 200m)")
@@ -478,7 +480,6 @@ else:
             subtotal = add_item(itens, subtotal, conn, "kit_placas", 1, "Placas de aviso (kit)")
             subtotal = add_item(itens, subtotal, conn, "kit_aterramento", 1, "Kit aterramento")
 
-            # Mão de obra proporcional
             base, por_m, _ = mao_por_m(conn, "mao_cerca_base", "mao_cerca_por_m", perimetro)
             if base > 0:
                 itens.append(("Mão de obra (taxa base)", 1, base, base))
@@ -486,7 +487,6 @@ else:
             itens.append(("Mão de obra (R$/metro)", round(perimetro, 1), por_m, perimetro * por_m))
             subtotal += perimetro * por_m
 
-            # Concertina extra (se escolhido)
             if "+ concertina" in tipo:
                 rolos_conc = ceil_div(perimetro, 10)
                 subtotal = add_item(itens, subtotal, conn, "concertina_10m", rolos_conc, "Concertina 30cm (rolo 10m)")
@@ -519,13 +519,17 @@ else:
                 )
 
         # =====================================================
-        # CONCERTINA LINEAR ELETRIFICADA (substitui fios)
+        # CONCERTINA LINEAR ELETRIFICADA (qtd fios configurável)
         # =====================================================
         elif tipo.startswith("Concertina linear eletrificada"):
-            rolos_linear = ceil_div(perimetro, 20)
-            subtotal = add_item(itens, subtotal, conn, "concertina_linear_20m", rolos_linear, "Concertina linear (rolo 20m)")
+            metros_linear = perimetro * fios
+            rolos_linear = ceil_div(metros_linear, 20)
 
-            # Mantém sistema
+            subtotal = add_item(
+                itens, subtotal, conn, "concertina_linear_20m", rolos_linear,
+                f"Concertina linear (rolo 20m) — {fios} fios ({metros_linear:.0f}m)"
+            )
+
             subtotal = add_item(itens, subtotal, conn, "central_sh1800", 1, "Central SH1800")
             subtotal = add_item(itens, subtotal, conn, "bateria", 1, "Bateria")
             subtotal = add_item(itens, subtotal, conn, "sirene", 1, "Sirene")
@@ -533,7 +537,6 @@ else:
             subtotal = add_item(itens, subtotal, conn, "kit_aterramento", 1, "Kit aterramento")
             subtotal = add_item(itens, subtotal, conn, "kit_placas", 1, "Placas de aviso (kit)")
 
-            # Mão de obra proporcional
             base, por_m, _ = mao_por_m(conn, "mao_linear_base", "mao_linear_por_m", perimetro)
             if base > 0:
                 itens.append(("Mão de obra (taxa base)", 1, base, base))
@@ -542,42 +545,70 @@ else:
             subtotal += perimetro * por_m
 
             resumo_completo = (
-                f"Instalação de concertina linear eletrificada em {perimetro:.0f}m.\n"
+                f"Instalação de concertina linear eletrificada em {perimetro:.0f}m, com {fios} fios.\n"
                 "A concertina faz a eletrificação (sem fios tradicionais), mantendo central, bateria e sirene.\n"
                 "Inclui aterramento, placas, testes e regulagem."
             )
             resumo_cliente = (
-                f"Instalação de concertina linear eletrificada em {perimetro:.0f}m.\n"
-                "Dispensa fios: a própria concertina é eletrificada, com central, bateria e sirene.\n"
+                f"Instalação de concertina linear eletrificada em {perimetro:.0f}m, com {fios} fios.\n"
+                "Dispensa fios tradicionais: a própria concertina é eletrificada, com central, bateria e sirene.\n"
                 "Entrega com aterramento correto, placas e testes finais."
             )
 
         # =====================================================
-        # MANUTENÇÃO / OUTROS
+        # CFTV (instalação) — DVR + por câmera
+        # =====================================================
+        elif tipo == "Câmeras (instalação)":
+            # Garantia de variável
+            qtd = int(qtd_cameras) if qtd_cameras else 1
+
+            # Mão de obra DVR (fixa)
+            subtotal = add_item(itens, subtotal, conn, "mao_cftv_dvr", 1, "Mão de obra (instalação do DVR)")
+
+            # Mão de obra por câmera
+            unit_cam = get_preco(conn, "mao_cftv_por_camera_inst", default=0.0)
+            sub_cam = unit_cam * qtd
+            itens.append(("Mão de obra (instalação por câmera)", qtd, unit_cam, sub_cam))
+            subtotal += sub_cam
+
+            resumo_completo = (
+                f"Instalação de sistema CFTV com {qtd} câmera(s).\n"
+                "Inclui instalação/configuração do DVR, organização e testes do sistema."
+            )
+            resumo_cliente = (
+                f"Instalação de CFTV com {qtd} câmera(s).\n"
+                "Inclui instalação do DVR, configuração e testes finais."
+            )
+
+        # =====================================================
+        # CFTV (manutenção) — por câmera com defeito
+        # =====================================================
+        elif tipo == "Câmeras (manutenção)":
+            qtd = int(qtd_defeituosas) if qtd_defeituosas else 1
+
+            unit_def = get_preco(conn, "mao_cftv_por_camera_defeito", default=0.0)
+            sub_def = unit_def * qtd
+            itens.append(("Mão de obra (manutenção por câmera com defeito)", qtd, unit_def, sub_def))
+            subtotal += sub_def
+
+            resumo_completo = (
+                f"Manutenção em {qtd} câmera(s) com defeito.\n"
+                "Inclui diagnóstico, correções possíveis e testes de funcionamento."
+            )
+            resumo_cliente = (
+                f"Manutenção de {qtd} câmera(s) com defeito.\n"
+                "Inclui diagnóstico e testes."
+            )
+
+        # =====================================================
+        # MANUTENÇÃO CERCA / MOTOR
         # =====================================================
         elif tipo == "Cerca elétrica (manutenção)":
             mao = get_preco(conn, "mao_cerca_man", default=0.0)
             itens.append(("Manutenção de cerca elétrica (mão de obra)", 1, mao, mao))
             subtotal = mao
-            resumo_completo = (
-                "Manutenção e revisão do sistema: diagnóstico, ajustes, testes de energia,\n"
-                "checagem de aterramento, sirene/central e correções necessárias."
-            )
+            resumo_completo = "Manutenção e revisão do sistema de cerca elétrica com testes e ajustes."
             resumo_cliente = "Manutenção de cerca elétrica com revisão e testes."
-
-        elif tipo == "Câmeras (instalação)":
-            mao = get_preco(conn, "mao_cftv_inst", default=0.0)
-            itens.append(("Instalação de câmeras (mão de obra)", 1, mao, mao))
-            subtotal = mao
-            resumo_completo = "Instalação de câmeras conforme definido, com testes e orientação."
-            resumo_cliente = "Instalação de câmeras com testes e orientação."
-
-        elif tipo == "Câmeras (manutenção)":
-            mao = get_preco(conn, "mao_cftv_man", default=0.0)
-            itens.append(("Manutenção de câmeras (mão de obra)", 1, mao, mao))
-            subtotal = mao
-            resumo_completo = "Manutenção e ajustes no sistema de câmeras, com testes."
-            resumo_cliente = "Manutenção de câmeras com revisão e testes."
 
         elif tipo == "Motor de portão (instalação)":
             mao = get_preco(conn, "mao_motor_inst", default=0.0)
@@ -594,7 +625,7 @@ else:
             resumo_cliente = "Manutenção do motor com ajustes e testes."
 
         # =====================================================
-        # DESCONTO (corrigido, sem typos)
+        # DESCONTO
         # =====================================================
         desconto_valor = 0.0
         desconto_label = "—"
@@ -609,7 +640,7 @@ else:
         total = max(0.0, subtotal - desconto_valor)
 
         # =====================================================
-        # GERA PDFs
+        # GERAR PDFs
         # =====================================================
         os.makedirs("output", exist_ok=True)
         filename_base = f"orcamento_{cliente.strip().replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
