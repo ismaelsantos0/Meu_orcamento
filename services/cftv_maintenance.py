@@ -3,6 +3,8 @@ import streamlit as st
 
 from core.db import get_price
 from core.money import brl
+from services.base import ServicePlugin
+
 
 id = "cftv_maintenance"
 label = "Câmeras (manutenção)"
@@ -50,5 +52,4 @@ def compute(conn, inputs: dict):
     }
 
 
-from services.registry import ServicePlugin
 plugin = ServicePlugin(id=id, label=label, render_fields=render_fields, compute=compute)
