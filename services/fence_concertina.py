@@ -4,6 +4,8 @@ import streamlit as st
 from core.db import get_price
 from core.money import brl
 from core.utils import ceil_div
+from services.base import ServicePlugin
+
 
 id = "fence_concertina_install"
 label = "Cerca elétrica + concertina (instalação)"
@@ -45,7 +47,6 @@ def compute(conn, inputs: dict):
         items.append({"desc": desc, "qty": qty, "unit": float(unit), "sub": sub})
         subtotal += sub
 
-    # Base cerca
     hastes_retas, hastes_cantos = _calc_hastes(perimetro, espac, cantos)
     arame_m = perimetro * fios
     rolos_fio = ceil_div(arame_m, 200)
@@ -68,7 +69,6 @@ def compute(conn, inputs: dict):
         add("Mão de obra (taxa base)", 1, base)
     add("Mão de obra (R$/metro)", round(perimetro, 1), por_m)
 
-    # Concertina
     rolos_conc = ceil_div(perimetro, 10)
     add("Concertina 30cm (rolo 10m)", rolos_conc, get_price(conn, "concertina_10m"))
 
@@ -101,5 +101,4 @@ def compute(conn, inputs: dict):
     }
 
 
-from services.registry import ServicePlugin
 plugin = ServicePlugin(id=id, label=label, render_fields=render_fields, compute=compute)
