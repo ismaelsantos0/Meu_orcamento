@@ -1,4 +1,5 @@
 import os
+import re
 import sqlite3
 from datetime import datetime
 
@@ -18,6 +19,37 @@ EMPRESA = "RR Smart Soluções"
 WHATSAPP = "97991728899"
 GARANTIA_PADRAO = "6 meses"
 VALIDADE_PADRAO = 7
+
+
+# =========================================================
+# Nome de arquivo (Cliente - Serviço - 11 de fev)
+# =========================================================
+def data_br_curta(dt: datetime | None = None) -> str:
+    meses = {
+        1: "jan", 2: "fev", 3: "mar", 4: "abr",
+        5: "mai", 6: "jun", 7: "jul", 8: "ago",
+        9: "set", 10: "out", 11: "nov", 12: "dez",
+    }
+    dt = dt or datetime.now()
+    return f"{dt.day} de {meses[dt.month]}"
+
+
+def slug_filename(s: str) -> str:
+    """
+    Remove caracteres inválidos em nomes de arquivo (Windows/Linux).
+    Mantém letras, números, espaço, hífen e underscore.
+    """
+    s = s.strip()
+    s = re.sub(r"[\\/:*?\"<>|]+", "-", s)  # inválidos Windows
+    s = re.sub(r"\s+", " ", s)            # espaços duplicados
+    return s
+
+
+def make_pdf_name(cliente: str, servico: str, dt: datetime | None = None) -> str:
+    cliente_nome = slug_filename(cliente)
+    servico_nome = slug_filename(servico)
+    data_nome = data_br_curta(dt)
+    return f"{cliente_nome} - {servico_nome} - {data_nome}.pdf"
 
 
 # =========================================================
@@ -266,7 +298,7 @@ def gerar_pdf_completo(
 
 
 # =========================================================
-# PDF - Resumido (bonito + explicativo)
+# PDF - Resumido
 # =========================================================
 def gerar_pdf_resumido(
     out_path: str,
@@ -414,7 +446,6 @@ else:
     espacamento = 2.5
     cantos = 4
 
-    # Campos de cerca/concertina
     if "Cerca" in tipo or "Concertina" in tipo:
         c1, c2, c3, c4 = st.columns(4)
         with c1:
@@ -426,7 +457,7 @@ else:
         with c4:
             cantos = st.number_input("Qtd. cantos", value=4, min_value=1, step=1)
 
-    # Campos extras para CFTV (sem mudar o layout geral)
+    # Campos extras para CFTV
     qtd_cameras = None
     qtd_defeituosas = None
 
@@ -519,7 +550,7 @@ else:
                 )
 
         # =====================================================
-        # CONCERTINA LINEAR ELETRIFICADA (qtd fios configurável)
+        # CONCERTINA LINEAR (qtd fios configurável)
         # =====================================================
         elif tipo.startswith("Concertina linear eletrificada"):
             metros_linear = perimetro * fios
@@ -559,13 +590,12 @@ else:
         # CFTV (instalação) — DVR + por câmera
         # =====================================================
         elif tipo == "Câmeras (instalação)":
-            # Garantia de variável
             qtd = int(qtd_cameras) if qtd_cameras else 1
 
-            # Mão de obra DVR (fixa)
+            # DVR fixo
             subtotal = add_item(itens, subtotal, conn, "mao_cftv_dvr", 1, "Mão de obra (instalação do DVR)")
 
-            # Mão de obra por câmera
+            # Por câmera
             unit_cam = get_preco(conn, "mao_cftv_por_camera_inst", default=0.0)
             sub_cam = unit_cam * qtd
             itens.append(("Mão de obra (instalação por câmera)", qtd, unit_cam, sub_cam))
@@ -640,14 +670,15 @@ else:
         total = max(0.0, subtotal - desconto_valor)
 
         # =====================================================
-        # GERAR PDFs
+        # GERAR PDFs (novo padrão do nome)
         # =====================================================
         os.makedirs("output", exist_ok=True)
-        filename_base = f"orcamento_{cliente.strip().replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        dt_now = datetime.now()
+
+        filename = make_pdf_name(cliente.strip(), tipo, dt_now)
+        out = os.path.join("output", filename)
 
         if tipo_relatorio.startswith("Resumido"):
-            filename = f"{filename_base}_RESUMO.pdf"
-            out = os.path.join("output", filename)
             gerar_pdf_resumido(
                 out_path=out,
                 cliente=cliente_fmt,
@@ -659,8 +690,6 @@ else:
                 validade_dias=VALIDADE_PADRAO,
             )
         else:
-            filename = f"{filename_base}_COMPLETO.pdf"
-            out = os.path.join("output", filename)
             gerar_pdf_completo(
                 out_path=out,
                 cliente=cliente_fmt,
