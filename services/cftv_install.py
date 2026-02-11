@@ -3,6 +3,8 @@ import streamlit as st
 
 from core.db import get_price
 from core.money import brl
+from services.base import ServicePlugin
+
 
 id = "cftv_install"
 label = "Câmeras (instalação)"
@@ -25,7 +27,6 @@ def compute(conn, inputs: dict):
         items.append({"desc": desc, "qty": qty, "unit": float(unit), "sub": sub})
         subtotal += sub
 
-    # DVR fixo + por câmera
     add("Mão de obra (instalação do DVR)", 1, get_price(conn, "mao_cftv_dvr"))
     add("Mão de obra (instalação por câmera)", qtd, get_price(conn, "mao_cftv_por_camera_inst"))
 
@@ -52,5 +53,4 @@ def compute(conn, inputs: dict):
     }
 
 
-from services.registry import ServicePlugin
 plugin = ServicePlugin(id=id, label=label, render_fields=render_fields, compute=compute)
