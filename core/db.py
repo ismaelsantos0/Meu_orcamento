@@ -87,7 +87,17 @@ def ensure_seed(conn):
         ("mao_cftv_dvr", "Mão de obra CFTV (instalação do DVR)", 200.0),
         ("mao_cftv_por_camera_inst", "Mão de obra CFTV (instalação por câmera)", 120.0),
         ("mao_cftv_por_camera_defeito", "Mão de obra CFTV (manutenção por câmera com defeito)", 80.0),
-
+# CFTV (materiais)
+        ("cftv_camera", "Câmera (un)", 115.17),
+        ("cftv_dvr", "DVR (un)", 0.0),
+        ("cftv_hd", "HD para DVR (un)", 0.0),
+        ("cftv_fonte_colmeia", "Fonte colmeia 12V 15A (un)", 130.71),
+        ("cftv_cabo_cat5_m", "Cabo U/UTP Cat5e (R$/metro)", 3.88),
+        ("cftv_balun", "Balun (un)", 28.79),
+        ("cftv_conector_p4_macho", "Conector P4 macho (un)", 7.20),
+        ("cftv_conector_p4_femea", "Conector P4 fêmea (un)", 7.20),
+        ("cftv_suporte_camera", "Suporte para câmera (un)", 0.0),
+        ("cftv_caixa_hermetica", "Caixa hermética / sobrepor (un)", 83.50),
         # Outros
         ("mao_motor_inst", "Mão de obra Motor (instalação)", 0.0),
         ("mao_motor_man", "Mão de obra Motor (manutenção)", 0.0),
