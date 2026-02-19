@@ -1,18 +1,31 @@
-from services.fence import plugin as fence
-from services.fence_concertina import plugin as fence_concertina
-from services.concertina_linear import plugin as concertina_linear
-from services.cftv_install import plugin as cftv_install
-from services.cftv_maintenance import plugin as cftv_maintenance
-from services.gate_motor_install import plugin as motor_install
-from services.gate_motor_maintenance import plugin as motor_maintenance
+# services/registry.py
+from __future__ import annotations
+
+from typing import Dict
+
+from services.base import ServicePlugin
+
+REGISTRY: Dict[str, ServicePlugin] = {}
 
 
-SERVICE_REGISTRY = {
-    fence.id: fence,
-    fence_concertina.id: fence_concertina,
-    concertina_linear.id: concertina_linear,
-    cftv_install.id: cftv_install,
-    cftv_maintenance.id: cftv_maintenance,
-    motor_install.id: motor_install,
-    motor_maintenance.id: motor_maintenance,
-}
+def register(plugin: ServicePlugin) -> ServicePlugin:
+    REGISTRY[plugin.id] = plugin
+    return plugin
+
+
+def get_plugins() -> Dict[str, ServicePlugin]:
+    return REGISTRY
+
+
+# =========================
+# Importa e registra plugins
+# =========================
+# Ajuste os imports conforme os nomes reais dos seus arquivos em services/
+# (pelo seu print você tem fence.py, fence_concertina.py, concertina_linear.py)
+from services.fence import plugin as fence_plugin
+from services.fence_concertina import plugin as fence_concertina_plugin
+from services.concertina_linear import plugin as concertina_linear_plugin
+
+register(fence_plugin)
+register(fence_concertina_plugin)
+register(concertina_linear_plugin)
