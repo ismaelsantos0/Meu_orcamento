@@ -15,7 +15,7 @@ from services.registry import SERVICE_REGISTRY
 
 APP_TITLE = "RR Smart Soluções — Gerador de Orçamentos"
 EMPRESA = "RR Smart Soluções"
-WHATSAPP = "97991728899"
+WHATSAPP = "95984187832"
 LOGO_PATH = "assets/logo.png"
 VALIDADE_PADRAO = 7
 GARANTIA_PADRAO = "6 meses"
