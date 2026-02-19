@@ -12,12 +12,36 @@ import streamlit as st
 # =========================
 from core.materials import build_materials_list, materials_text_for_whatsapp
 
-# Registry de plugins (o seu projeto tem services/registry.py)
-from services.registry import plugins as SERVICE_PLUGINS  # <- se der erro, veja comentário abaixo
+# =========================
+# Registry de serviços (plugins)
+# =========================
+import services.registry as registry
 
-# Caso no seu registry não exista "plugins", comente a linha acima e use um destes:
-# from services.registry import PLUGINS as SERVICE_PLUGINS
-# from services.registry import get_plugins as SERVICE_PLUGINS  # e adapte no código
+
+def load_plugins():
+    """
+    Suporta registry nos formatos:
+    - REGISTRY (dict)
+    - PLUGINS (dict)
+    - get_plugins() -> dict
+    """
+    if hasattr(registry, "get_plugins"):
+        plugins = registry.get_plugins()
+    elif hasattr(registry, "REGISTRY"):
+        plugins = registry.REGISTRY
+    elif hasattr(registry, "PLUGINS"):
+        plugins = registry.PLUGINS
+    else:
+        raise RuntimeError(
+            "Não encontrei plugins no services/registry.py "
+            "(esperado: get_plugins(), REGISTRY ou PLUGINS)"
+        )
+
+    if isinstance(plugins, dict):
+        return list(plugins.values())
+
+    return list(plugins)
+
 
 
 # =========================
