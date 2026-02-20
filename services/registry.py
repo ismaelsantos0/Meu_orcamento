@@ -24,7 +24,7 @@ from services.concertina_linear import plugin as concertina_linear_plugin
 
 # Importando os novos serviços de Câmeras e Motores
 from services.cftv_install import plugin as cftv_install_plugin
-from services.cftv_manutence import plugin as cftv_manutence_plugin
+from services.cftv_maintenance import plugin as cftv_maintenance_plugin
 from services.gate_motor_install import plugin as motor_install_plugin
 from services.gate_motor_maintenance import plugin as motor_maintenance_plugin
 
@@ -33,6 +33,6 @@ register(fence_plugin)
 register(fence_concertina_plugin)
 register(concertina_linear_plugin)
 register(cftv_install_plugin)
-register(cftv_manutence_plugin)
+register(cftv_maintenance_plugin)
 register(motor_install_plugin)
 register(motor_maintenance_plugin)
