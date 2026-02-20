@@ -46,15 +46,16 @@ def load_plugins():
 
 
 # =========================
-# PDF - Wrapper (ajuste 1x se necessário)
+# PDF - Wrapper Corrigido
 # =========================
 def generate_pdf_bytes(quote: dict, *, logo_path: str | None = None) -> bytes:
     """
-    Tenta gerar PDF usando core/pdf/pdf.py.
+    Gera o PDF usando o arquivo core/pdf/complete.py
     """
-    from core.pdf import pdf as pdfmod  # core/pdf/pdf.py
+    # CORREÇÃO AQUI: Importando de 'complete' em vez de 'pdf'
+    from core.pdf import complete as pdfmod  
 
-    # Nomes comuns de função
+    # Nomes comuns de função que você pode ter usado no complete.py
     for fn_name in ("render_quote_pdf", "render_pdf", "generate_pdf", "build_pdf", "make_pdf", "create_pdf"):
         fn = getattr(pdfmod, fn_name, None)
         if callable(fn):
@@ -64,8 +65,8 @@ def generate_pdf_bytes(quote: dict, *, logo_path: str | None = None) -> bytes:
                 return fn(quote)  # type: ignore
 
     raise RuntimeError(
-        "Não encontrei função de PDF em core/pdf/pdf.py. "
-        "Abra esse arquivo e veja o nome da função que gera o PDF."
+        "Não encontrei a função que gera o PDF no arquivo core/pdf/complete.py. "
+        "Verifique o nome da função lá dentro (ex: render_pdf, generate_pdf)."
     )
 
 
