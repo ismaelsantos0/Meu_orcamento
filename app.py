@@ -56,7 +56,7 @@ def generate_pdf_bytes(single_quote: dict, *, logo_path: str | None = None) -> b
     quote_for_pdf = {
         "logo_path": logo_path,
         "empresa": "Sua Empresa de Segurança", # <-- COLOQUE SEU NOME AQUI
-        "whatsapp": single_quote.get("client_phone") or "(95) 90000-0000", # <-- SEU NÚMERO
+        "whatsapp": single_quote.get("client_phone") or "(00) 00000-0000", # <-- SEU NÚMERO
         "data_str": datetime.now().strftime("%d/%m/%Y"),
         "cliente": single_quote.get("client_name") or "Cliente não informado",
         "servicos": [single_quote], # O PDF espera uma lista de serviços
@@ -160,9 +160,7 @@ try:
 except Exception as e:
     st.error(f"Erro ao calcular itens do orçamento. Verifique os preços no banco: {e}")
     st.stop()
-finally:
-    if conn:
-        conn.close()
+# AQUI retiramos o "finally: conn.close()", permitindo que o Streamlit reutilize a ligação guardada na cache!
 
 # Injeta dados do cliente na cotação para o PDF
 quote["client_name"] = cliente_nome
