@@ -4,7 +4,6 @@ from core.db import get_conn
 
 st.set_page_config(page_title="Tabela de Preços", page_icon="💰", layout="wide")
 st.title("💰 Configuração de Preços")
-st.write("Edite os valores diretamente na tabela abaixo e clique em Salvar.")
 
 # =========================
 # Conexão DB
@@ -16,36 +15,75 @@ except Exception as e:
     st.stop()
 
 # =========================
-# Função Automática de Setup
+# Migração / Setup do Banco
 # =========================
-def setup_database():
-    sql = """
-    CREATE TABLE IF NOT EXISTS precos (
-        chave VARCHAR(100) PRIMARY KEY,
-        valor NUMERIC(10, 2) NOT NULL
-    );
-
-    INSERT INTO precos (chave, valor) VALUES
-    ('cftv_camera', 150.00), ('cftv_dvr', 450.00), ('cftv_hd', 300.00), ('cftv_fonte_colmeia', 70.00),
-    ('cftv_cabo_cat5_m', 3.50), ('cftv_balun', 15.00), ('cftv_conector_p4_macho', 4.00),
-    ('cftv_conector_p4_femea', 4.00), ('cftv_suporte_camera', 10.00), ('cftv_caixa_hermetica', 12.00),
-    ('mao_cftv_dvr', 120.00), ('mao_cftv_por_camera_inst', 80.00), ('mao_cftv_por_camera_defeito', 60.00),
-    ('haste_reta', 18.00), ('haste_canto', 28.00), ('fio_aco_200m', 65.00), ('central_sh1800', 380.00),
-    ('bateria', 85.00), ('sirene', 35.00), ('kit_isoladores', 45.00), ('cabo_alta_50m', 55.00),
-    ('kit_placas', 25.00), ('kit_aterramento', 40.00), ('concertina_linear_20m', 140.00),
-    ('concertina_10m', 95.00), ('mao_cerca_base', 150.00), ('mao_cerca_por_m', 6.00),
-    ('mao_linear_base', 120.00), ('mao_linear_por_m', 8.00), ('mao_concertina_base', 100.00),
-    ('mao_concertina_por_m', 12.00), ('mao_motor_inst', 250.00), ('mao_motor_man', 150.00)
-    ON CONFLICT (chave) DO NOTHING;
-    """
+def upgrade_database():
+    """Garante que a tabela existe e cria a coluna de categoria."""
     try:
         with conn.cursor() as cur:
-            cur.execute(sql)
-        st.success("✅ Banco de dados inicializado com sucesso!")
-        st.rerun() # Recarrega a página automaticamente
+            # Garante que a tabela existe
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS precos (
+                    chave VARCHAR(100) PRIMARY KEY,
+                    valor NUMERIC(10, 2) NOT NULL
+                );
+            """)
+            
+            # Adiciona a coluna de categoria (ignora se já existir)
+            cur.execute("""
+                ALTER TABLE precos ADD COLUMN IF NOT EXISTS categoria VARCHAR(50) DEFAULT 'Outros';
+            """)
+            
+            # Classifica os itens antigos automaticamente
+            cur.execute("UPDATE precos SET categoria = 'CFTV' WHERE chave LIKE '%cftv%';")
+            cur.execute("UPDATE precos SET categoria = 'Motor de Portão' WHERE chave LIKE 'mao_motor%';")
+            cur.execute("""
+                UPDATE precos SET categoria = 'Cerca/Concertina' 
+                WHERE chave LIKE 'haste%' OR chave LIKE 'mao_cerca%' OR chave LIKE 'mao_linear%' 
+                OR chave LIKE 'mao_concertina%' OR chave LIKE 'concertina%' OR chave LIKE 'fio%'
+                OR chave IN ('central_sh1800', 'bateria', 'sirene', 'kit_isoladores', 'cabo_alta_50m', 'kit_placas', 'kit_aterramento');
+            """)
     except Exception as e:
-        st.error(f"Erro ao inicializar: {e}")
         conn.rollback()
+        st.error(f"Erro ao preparar o banco: {e}")
+
+upgrade_database()
+
+# =========================
+# Adicionar Novo Item
+# =========================
+categorias_disponiveis = ["CFTV", "Cerca/Concertina", "Motor de Portão", "Outros"]
+
+with st.expander("➕ Adicionar Novo Item de Serviço", expanded=False):
+    st.info("Lembre-se: Após adicionar um item aqui, você precisará editar o código em `services/` para que o sistema saiba quando cobrar este item.")
+    with st.form("form_novo_item", clear_on_submit=True):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            nova_chave = st.text_input("Chave do Item (ex: cftv_cabo_rede)", placeholder="sem_espacos_ou_acentos")
+        with col2:
+            novo_valor = st.number_input("Valor Unitário (R$)", min_value=0.0, step=0.5, format="%.2f")
+        with col3:
+            nova_categoria = st.selectbox("Categoria", categorias_disponiveis)
+        
+        submit_novo = st.form_submit_button("Salvar Novo Item", type="primary")
+        
+        if submit_novo:
+            if not nova_chave.strip():
+                st.warning("A chave do item não pode estar vazia.")
+            else:
+                try:
+                    # Limpa a chave para evitar problemas (remove espaços e põe em minúsculo)
+                    chave_limpa = nova_chave.strip().lower().replace(" ", "_")
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "INSERT INTO precos (chave, valor, categoria) VALUES (%s, %s, %s) ON CONFLICT (chave) DO NOTHING",
+                            (chave_limpa, novo_valor, nova_categoria)
+                        )
+                    st.success(f"Item '{chave_limpa}' adicionado com sucesso!")
+                    st.rerun()
+                except Exception as e:
+                    conn.rollback()
+                    st.error(f"Erro ao adicionar item. Talvez a chave já exista? Erro: {e}")
 
 # =========================
 # Busca os dados atuais
@@ -53,63 +91,67 @@ def setup_database():
 df = pd.DataFrame()
 try:
     with conn.cursor() as cur:
-        # Tenta buscar os dados
-        cur.execute("SELECT chave, valor FROM precos ORDER BY chave")
+        cur.execute("SELECT chave, valor, categoria FROM precos ORDER BY chave")
         rows = cur.fetchall()
-        
-        if rows and isinstance(rows[0], tuple):
-            df = pd.DataFrame(rows, columns=["chave", "valor"])
-        elif rows:
+        if rows:
             df = pd.DataFrame(rows)
-            
+            df["valor"] = df["valor"].astype(float)
 except Exception as e:
-    # Se der erro (ex: a tabela não existe), o Postgres exige um rollback
-    conn.rollback() 
-    st.warning("⚠️ O banco de dados ainda não foi configurado (A tabela 'precos' não existe).")
-    if st.button("🚀 Inicializar Banco de Dados Automagicamente", type="primary"):
-        setup_database()
-    st.stop()
+    conn.rollback()
+    st.error(f"Erro ao ler banco de dados: {e}")
 
 if df.empty:
-    st.warning("A tabela existe, mas não tem nenhum preço cadastrado.")
-    if st.button("🚀 Inserir Valores Padrão", type="primary"):
-        setup_database()
+    st.warning("Nenhum preço encontrado. Use o formulário acima para adicionar.")
     st.stop()
 
 # =========================
-# Editor Visual de Tabela
+# Interface em Abas
 # =========================
-df["valor"] = df["valor"].astype(float)
+st.write("### Tabela de Preços")
+st.write("Edite os valores abaixo e clique no botão **Salvar Alterações** correspondente à aba.")
 
-st.write("### Tabela Atual")
-edited_df = st.data_editor(
-    df,
-    disabled=["chave"], # Bloqueia a chave para não quebrar os cálculos
-    use_container_width=True,
-    hide_index=True,
-    column_config={
-        "chave": st.column_config.TextColumn("Identificador (Chave)"),
-        "valor": st.column_config.NumberColumn(
-            "Valor em R$",
-            min_value=0.0,
-            step=0.5,
-            format="R$ %.2f"
-        )
-    }
-)
+# Cria as abas dinamicamente com base nas categorias que existem no banco + as padrão
+categorias_existentes = sorted(list(set(df["categoria"].dropna().unique()) | set(categorias_disponiveis)))
+abas = st.tabs(categorias_existentes)
 
-# =========================
-# Salvar Alterações
-# =========================
-if st.button("💾 Salvar Alterações", type="primary", use_container_width=True):
-    try:
-        with conn.cursor() as cur:
-            for index, row in edited_df.iterrows():
-                cur.execute(
-                    "UPDATE precos SET valor = %s WHERE chave = %s",
-                    (row["valor"], row["chave"])
+for i, cat in enumerate(categorias_existentes):
+    with abas[i]:
+        # Filtra o dataframe para mostrar só a categoria desta aba
+        df_cat = df[df["categoria"] == cat].copy()
+        
+        if df_cat.empty:
+            st.info(f"Nenhum item cadastrado na categoria {cat}.")
+            continue
+
+        # Editor de dados para a aba atual
+        edited_df = st.data_editor(
+            df_cat,
+            disabled=["chave", "categoria"], # Trava nome e categoria
+            use_container_width=True,
+            hide_index=True,
+            key=f"editor_{cat}", # Key única para o Streamlit não confundir as tabelas
+            column_config={
+                "chave": st.column_config.TextColumn("Identificador (Chave)"),
+                "categoria": None, # Oculta a coluna de categoria já que estamos na aba dela
+                "valor": st.column_config.NumberColumn(
+                    "Valor em R$",
+                    min_value=0.0,
+                    step=0.5,
+                    format="R$ %.2f"
                 )
-        st.success("✅ Preços atualizados com sucesso no banco de dados!")
-    except Exception as e:
-        st.error(f"Erro ao atualizar: {e}")
-        conn.rollback()
+            }
+        )
+        
+        # Botão de salvar independente para cada aba
+        if st.button(f"💾 Salvar preços de {cat}", key=f"btn_salvar_{cat}", type="secondary"):
+            try:
+                with conn.cursor() as cur:
+                    for index, row in edited_df.iterrows():
+                        cur.execute(
+                            "UPDATE precos SET valor = %s WHERE chave = %s",
+                            (row["valor"], row["chave"])
+                        )
+                st.success(f"✅ Preços de {cat} atualizados!")
+            except Exception as e:
+                conn.rollback()
+                st.error(f"Erro ao atualizar: {e}")
