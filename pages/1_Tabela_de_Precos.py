@@ -21,20 +21,15 @@ def upgrade_database():
     """Garante que a tabela existe e cria a coluna de categoria."""
     try:
         with conn.cursor() as cur:
-            # Garante que a tabela existe
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS precos (
                     chave VARCHAR(100) PRIMARY KEY,
                     valor NUMERIC(10, 2) NOT NULL
                 );
             """)
-            
-            # Adiciona a coluna de categoria (ignora se já existir)
             cur.execute("""
                 ALTER TABLE precos ADD COLUMN IF NOT EXISTS categoria VARCHAR(50) DEFAULT 'Outros';
             """)
-            
-            # Classifica os itens antigos automaticamente
             cur.execute("UPDATE precos SET categoria = 'CFTV' WHERE chave LIKE '%cftv%';")
             cur.execute("UPDATE precos SET categoria = 'Motor de Portão' WHERE chave LIKE 'mao_motor%';")
             cur.execute("""
@@ -72,7 +67,6 @@ with st.expander("➕ Adicionar Novo Item de Serviço", expanded=False):
                 st.warning("A chave do item não pode estar vazia.")
             else:
                 try:
-                    # Limpa a chave para evitar problemas (remove espaços e põe em minúsculo)
                     chave_limpa = nova_chave.strip().lower().replace(" ", "_")
                     with conn.cursor() as cur:
                         cur.execute(
@@ -83,7 +77,7 @@ with st.expander("➕ Adicionar Novo Item de Serviço", expanded=False):
                     st.rerun()
                 except Exception as e:
                     conn.rollback()
-                    st.error(f"Erro ao adicionar item. Talvez a chave já exista? Erro: {e}")
+                    st.error(f"Erro ao adicionar item: {e}")
 
 # =========================
 # Busca os dados atuais
@@ -94,11 +88,13 @@ try:
         cur.execute("SELECT chave, valor, categoria FROM precos ORDER BY chave")
         rows = cur.fetchall()
         if rows:
-            df = pd.DataFrame(rows)
+            # AQUI ESTÁ A CORREÇÃO: Forçamos o Pandas a saber o nome das colunas!
+            df = pd.DataFrame(rows, columns=["chave", "valor", "categoria"])
             df["valor"] = df["valor"].astype(float)
 except Exception as e:
     conn.rollback()
     st.error(f"Erro ao ler banco de dados: {e}")
+    st.stop() # Para a execução se o banco falhar
 
 if df.empty:
     st.warning("Nenhum preço encontrado. Use o formulário acima para adicionar.")
@@ -110,29 +106,26 @@ if df.empty:
 st.write("### Tabela de Preços")
 st.write("Edite os valores abaixo e clique no botão **Salvar Alterações** correspondente à aba.")
 
-# Cria as abas dinamicamente com base nas categorias que existem no banco + as padrão
 categorias_existentes = sorted(list(set(df["categoria"].dropna().unique()) | set(categorias_disponiveis)))
 abas = st.tabs(categorias_existentes)
 
 for i, cat in enumerate(categorias_existentes):
     with abas[i]:
-        # Filtra o dataframe para mostrar só a categoria desta aba
         df_cat = df[df["categoria"] == cat].copy()
         
         if df_cat.empty:
             st.info(f"Nenhum item cadastrado na categoria {cat}.")
             continue
 
-        # Editor de dados para a aba atual
         edited_df = st.data_editor(
             df_cat,
-            disabled=["chave", "categoria"], # Trava nome e categoria
+            disabled=["chave", "categoria"],
             use_container_width=True,
             hide_index=True,
-            key=f"editor_{cat}", # Key única para o Streamlit não confundir as tabelas
+            key=f"editor_{cat}",
             column_config={
                 "chave": st.column_config.TextColumn("Identificador (Chave)"),
-                "categoria": None, # Oculta a coluna de categoria já que estamos na aba dela
+                "categoria": None, 
                 "valor": st.column_config.NumberColumn(
                     "Valor em R$",
                     min_value=0.0,
@@ -142,7 +135,6 @@ for i, cat in enumerate(categorias_existentes):
             }
         )
         
-        # Botão de salvar independente para cada aba
         if st.button(f"💾 Salvar preços de {cat}", key=f"btn_salvar_{cat}", type="secondary"):
             try:
                 with conn.cursor() as cur:
