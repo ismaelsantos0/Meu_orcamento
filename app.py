@@ -52,25 +52,22 @@ def generate_pdf_bytes(single_quote: dict, *, logo_path: str | None = None) -> b
     from core.pdf.complete import render_complete_pdf
     
     # --- ESCUDO DE PROTEÇÃO ---
-    # Garante que 'summary_full' exista para o PDF não quebrar (útil para a concertina_linear)
     if "summary_full" not in single_quote:
         desc = single_quote.get("service_description", {})
         if isinstance(desc, dict):
-            # Se for o formato de dicionário da concertina, pega a chave 'description'
             single_quote["summary_full"] = desc.get("description", "Serviço de instalação e configuração.")
         else:
             single_quote["summary_full"] = str(desc) if desc else "Serviço de instalação e configuração."
     # --------------------------
 
     # 1. Adaptar os dados do serviço atual para o formato que o PDF exige
-    # ATENÇÃO: Edite os dados abaixo (Minha Empresa, whatsapp, etc) com os seus dados reais!
     quote_for_pdf = {
         "logo_path": logo_path,
         "empresa": "Sua Empresa de Segurança", # <-- COLOQUE SEU NOME AQUI
         "whatsapp": single_quote.get("client_phone") or "(00) 00000-0000", # <-- SEU NÚMERO
         "data_str": datetime.now().strftime("%d/%m/%Y"),
         "cliente": single_quote.get("client_name") or "Cliente não informado",
-        "servicos": [single_quote], # O PDF espera uma lista de serviços
+        "servicos": [single_quote], 
         "subtotal": single_quote.get("subtotal", 0.0),
         "desconto_valor": 0.0,
         "desconto_label": "",
@@ -80,13 +77,8 @@ def generate_pdf_bytes(single_quote: dict, *, logo_path: str | None = None) -> b
         "validade_dias": 7
     }
 
-    # 2. Criar um arquivo na memória (buffer) para o ReportLab escrever
     buffer = io.BytesIO()
-
-    # 3. Executar a função do seu arquivo complete.py
     render_complete_pdf(buffer, quote_for_pdf)
-
-    # 4. Pegar os dados gerados e retornar para o Streamlit
     pdf_bytes = buffer.getvalue()
     buffer.close()
     
@@ -141,21 +133,8 @@ plugin = plugin_by_label[service_label]
 
 st.caption(f"Serviço selecionado: **{plugin.label}** • ID: `{plugin.id}`")
 
-# Campos do serviço
-st.subheader("Dados do serviço")
-inputs = plugin.render_fields()
-
-colA, colB = st.columns([1, 2])
-with colA:
-    gerar = st.button("✅ Gerar orçamento", use_container_width=True)
-with colB:
-    st.info("Preencha os dados acima e clique em Gerar orçamento.")
-
-if not gerar:
-    st.stop()
-
 # =========================
-# Conexão DB
+# Conexão DB (Movida para cima para ler os extras)
 # =========================
 try:
     conn = get_conn()
@@ -163,15 +142,111 @@ except Exception as e:
     st.error(f"Falha ao conectar no banco de dados: {e}")
     st.stop()
 
+
 # =========================
-# Calcula orçamento
+# DADOS DO SERVIÇO PRINCIPAL
+# =========================
+st.subheader("Dados do serviço")
+inputs = plugin.render_fields()
+
+
+# =========================
+# ITENS EXTRAS (MÁGICA AQUI)
+# =========================
+st.divider()
+st.subheader("➕ Itens e Serviços Adicionais (Opcional)")
+st.write("Selecione sensores, cabos extras, ou qualquer outro item avulso para somar neste orçamento.")
+
+extras_to_add = []
+try:
+    with conn.cursor() as cur:
+        # Busca todos os itens do banco para mostrar nas opções
+        cur.execute("SELECT chave, nome, valor FROM precos ORDER BY nome")
+        db_items = cur.fetchall()
+        
+    # Prepara o dicionário para a caixa de seleção
+    items_dict = {}
+    for row in db_items:
+        chave = row[0]
+        nome = row[1] if row[1] else chave.replace("_", " ").title()
+        valor = float(row[2])
+        label = f"{nome} (R$ {valor:.2f})"
+        items_dict[label] = {"chave": chave, "nome": nome, "valor": valor}
+        
+    # Caixa onde você pode digitar e selecionar múltiplos itens
+    selected_extra_labels = st.multiselect(
+        "Selecione os itens extras", 
+        options=list(items_dict.keys()),
+        placeholder="Clique para buscar um item extra..."
+    )
+    
+    # Se escolheu algum item, mostra as caixas de quantidade lado a lado
+    if selected_extra_labels:
+        st.write("**Defina a quantidade para cada item extra:**")
+        cols = st.columns(min(len(selected_extra_labels), 4))
+        for i, label in enumerate(selected_extra_labels):
+            with cols[i % 4]:
+                qty = st.number_input(
+                    f"Qtd: {items_dict[label]['nome']}", 
+                    min_value=1, value=1, step=1, 
+                    key=f"extra_qty_{items_dict[label]['chave']}"
+                )
+                extras_to_add.append({"item": items_dict[label], "qty": qty})
+
+except Exception as e:
+    st.error(f"Erro ao carregar itens extras: {e}")
+
+st.divider()
+
+# =========================
+# BOTÃO DE GERAR
+# =========================
+colA, colB = st.columns([1, 2])
+with colA:
+    gerar = st.button("✅ Gerar orçamento", use_container_width=True, type="primary")
+with colB:
+    st.info("Preencha os dados acima e clique em Gerar orçamento.")
+
+if not gerar:
+    st.stop()
+
+# =========================
+# Calcula orçamento base
 # =========================
 try:
     quote = plugin.compute(conn, inputs)
 except Exception as e:
     st.error(f"Erro ao calcular itens do orçamento. Verifique os preços no banco: {e}")
     st.stop()
-# AQUI retiramos o "finally: conn.close()", permitindo que o Streamlit reutilize a ligação guardada na cache!
+
+
+# =========================
+# INJETA OS EXTRAS NO ORÇAMENTO
+# =========================
+if extras_to_add:
+    for extra in extras_to_add:
+        item_data = extra["item"]
+        qty = extra["qty"]
+        sub = qty * item_data["valor"]
+        
+        # Adiciona na lista de itens
+        quote["items"].append({
+            "desc": f"[EXTRA] {item_data['nome']}",
+            "qty": qty,
+            "unit": item_data["valor"],
+            "sub": sub
+        })
+        
+        # Soma no subtotal
+        quote["subtotal"] += sub
+        
+    # Atualiza as descrições para avisar que tem itens extras
+    qtd_extras = len(extras_to_add)
+    if "summary_client" in quote:
+        quote["summary_client"] += f"\n+ {qtd_extras} tipo(s) de item(ns) extra(s) incluso(s)."
+    if "summary_full" in quote:
+        quote["summary_full"] += f"\n+ Inclui {qtd_extras} tipo(s) de item(ns) extra(s) (ver detalhamento)."
+
 
 # Injeta dados do cliente na cotação para o PDF
 quote["client_name"] = cliente_nome
