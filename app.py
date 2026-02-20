@@ -1,6 +1,7 @@
 # app.py
 from __future__ import annotations
 
+import io
 from pathlib import Path
 from datetime import datetime
 
@@ -8,7 +9,7 @@ import pandas as pd
 import streamlit as st
 
 from core.materials import build_materials_list, materials_text_for_whatsapp
-from core.db import get_conn  # Importação vitalícia para conectar ao PostgreSQL
+from core.db import get_conn  # Importação para conectar ao PostgreSQL
 
 
 # =========================
@@ -19,11 +20,7 @@ import services.registry as registry
 
 def load_plugins():
     """
-    Suporta registry nos formatos:
-    - get_plugins() -> dict | list
-    - REGISTRY (dict)
-    - PLUGINS (dict)
-    - plugins (dict | list)
+    Carrega os plugins de serviço dinamicamente.
     """
     if hasattr(registry, "get_plugins") and callable(getattr(registry, "get_plugins")):
         plugins = registry.get_plugins()
@@ -48,26 +45,41 @@ def load_plugins():
 # =========================
 # PDF - Wrapper Corrigido
 # =========================
-def generate_pdf_bytes(quote: dict, *, logo_path: str | None = None) -> bytes:
+def generate_pdf_bytes(single_quote: dict, *, logo_path: str | None = None) -> bytes:
     """
-    Gera o PDF usando o arquivo core/pdf/complete.py
+    Usa o core/pdf/complete.py para gerar o PDF na memória e retornar os bytes.
     """
-    # CORREÇÃO AQUI: Importando de 'complete' em vez de 'pdf'
-    from core.pdf import complete as pdfmod  
+    from core.pdf.complete import render_complete_pdf
+    
+    # 1. Adaptar os dados do serviço atual para o formato que o PDF exige
+    # ATENÇÃO: Edite os dados abaixo (Minha Empresa, whatsapp, etc) com os seus dados reais!
+    quote_for_pdf = {
+        "logo_path": logo_path,
+        "empresa": "Sua Empresa de Segurança", # <-- COLOQUE SEU NOME AQUI
+        "whatsapp": single_quote.get("client_phone") or "(95) 90000-0000", # <-- SEU NÚMERO
+        "data_str": datetime.now().strftime("%d/%m/%Y"),
+        "cliente": single_quote.get("client_name") or "Cliente não informado",
+        "servicos": [single_quote], # O PDF espera uma lista de serviços
+        "subtotal": single_quote.get("subtotal", 0.0),
+        "desconto_valor": 0.0,
+        "desconto_label": "",
+        "total": single_quote.get("subtotal", 0.0),
+        "pagamento": "À vista ou 50% entrada / 50% na entrega", # <-- SUA FORMA DE PAGTO
+        "garantia": "Garantia de 90 dias", # <-- SUA GARANTIA
+        "validade_dias": 7
+    }
 
-    # Nomes comuns de função que você pode ter usado no complete.py
-    for fn_name in ("render_quote_pdf", "render_pdf", "generate_pdf", "build_pdf", "make_pdf", "create_pdf"):
-        fn = getattr(pdfmod, fn_name, None)
-        if callable(fn):
-            try:
-                return fn(quote, logo_path=logo_path)  # type: ignore
-            except TypeError:
-                return fn(quote)  # type: ignore
+    # 2. Criar um arquivo na memória (buffer) para o ReportLab escrever
+    buffer = io.BytesIO()
 
-    raise RuntimeError(
-        "Não encontrei a função que gera o PDF no arquivo core/pdf/complete.py. "
-        "Verifique o nome da função lá dentro (ex: render_pdf, generate_pdf)."
-    )
+    # 3. Executar a função do seu arquivo complete.py
+    render_complete_pdf(buffer, quote_for_pdf)
+
+    # 4. Pegar os dados gerados e retornar para o Streamlit
+    pdf_bytes = buffer.getvalue()
+    buffer.close()
+    
+    return pdf_bytes
 
 
 # =========================
@@ -79,7 +91,7 @@ def brl(v: float) -> str:
 
 
 # =========================
-# Streamlit App
+# Streamlit App Principal
 # =========================
 st.set_page_config(page_title="Gerador de Orçamentos", page_icon="🧾", layout="wide")
 
@@ -97,7 +109,7 @@ with st.sidebar:
     st.divider()
     st.subheader("Dados do cliente (opcional)")
     cliente_nome = st.text_input("Nome do cliente", value="")
-    cliente_tel = st.text_input("Telefone/WhatsApp", value="")
+    cliente_tel = st.text_input("Telefone/WhatsApp do cliente", value="")
     obs_geral = st.text_area("Observações gerais", value="", height=90)
 
 # Carrega plugins
@@ -116,7 +128,7 @@ plugin_by_label = {p.label: p for p in plugins}
 service_label = st.selectbox("Selecione o serviço", options=list(plugin_by_label.keys()))
 plugin = plugin_by_label[service_label]
 
-st.caption(f"Serviço selecionado: **{plugin.label}** •  ID: `{plugin.id}`")
+st.caption(f"Serviço selecionado: **{plugin.label}** • ID: `{plugin.id}`")
 
 # Campos do serviço
 st.subheader("Dados do serviço")
@@ -126,7 +138,7 @@ colA, colB = st.columns([1, 2])
 with colA:
     gerar = st.button("✅ Gerar orçamento", use_container_width=True)
 with colB:
-    st.info("Gere o orçamento → baixe o PDF → gere a lista de materiais para mandar na loja.")
+    st.info("Preencha os dados acima e clique em Gerar orçamento.")
 
 if not gerar:
     st.stop()
@@ -148,14 +160,17 @@ try:
 except Exception as e:
     st.error(f"Erro ao calcular itens do orçamento. Verifique os preços no banco: {e}")
     st.stop()
+finally:
+    if conn:
+        conn.close()
 
-# Injeta dados do cliente
+# Injeta dados do cliente na cotação para o PDF
 quote["client_name"] = cliente_nome
 quote["client_phone"] = cliente_tel
 quote["notes"] = obs_geral
 
 # =========================
-# Itens
+# Itens na Tela
 # =========================
 st.subheader("Itens do orçamento")
 items_df = pd.DataFrame(quote.get("items", []))
@@ -173,13 +188,12 @@ st.markdown(f"### Total: **{brl(subtotal)}**")
 st.divider()
 st.subheader("📄 PDF do orçamento")
 
-# O botão do Streamlit para download não precisa do try/except no clique como um botão normal
 try:
     pdf_bytes = generate_pdf_bytes(quote, logo_path=logo_path)
     filename = f"orcamento_{plugin.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
     
     st.download_button(
-        "⬇️ Baixar PDF",
+        label="⬇️ Baixar PDF Completo",
         data=pdf_bytes,
         file_name=filename,
         mime="application/pdf",
