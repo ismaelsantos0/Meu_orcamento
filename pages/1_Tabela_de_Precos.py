@@ -1,5 +1,7 @@
 import streamlit as st
 import pandas as pd
+import re
+import unicodedata
 from core.db import get_conn
 
 st.set_page_config(page_title="Tabela de Preços", page_icon="💰", layout="wide")
@@ -11,25 +13,46 @@ st.title("💰 Configuração de Preços")
 try:
     conn = get_conn()
 except Exception as e:
-    st.error(f"Falha ao conectar no banco de dados: {e}")
+    st.error(f"Falha ao ligar à base de dados: {e}")
     st.stop()
+
+# =========================
+# Função para gerar Chave Automática
+# =========================
+def gerar_chave(nome: str) -> str:
+    """Transforma 'Câmara 1080p' em 'camara_1080p' para uso no código Python"""
+    nfkd = unicodedata.normalize('NFKD', nome)
+    nome_sem_acento = u"".join([c for c in nfkd if not unicodedata.combining(c)])
+    nome_limpo = re.sub(r'[^a-zA-Z0-9\s_]', '', nome_sem_acento).strip().lower()
+    return re.sub(r'\s+', '_', nome_limpo)
 
 # =========================
 # Migração / Setup do Banco
 # =========================
 def upgrade_database():
-    """Garante que a tabela existe e cria a coluna de categoria."""
+    """Garante que a tabela existe e atualiza a estrutura com ID e Nome."""
     try:
         with conn.cursor() as cur:
+            # Garante que a tabela base existe
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS precos (
                     chave VARCHAR(100) PRIMARY KEY,
                     valor NUMERIC(10, 2) NOT NULL
                 );
             """)
-            cur.execute("""
-                ALTER TABLE precos ADD COLUMN IF NOT EXISTS categoria VARCHAR(50) DEFAULT 'Outros';
-            """)
+            # Adiciona categoria
+            cur.execute("ALTER TABLE precos ADD COLUMN IF NOT EXISTS categoria VARCHAR(50) DEFAULT 'Outros';")
+            
+            # 1. Adiciona coluna para ID automático
+            cur.execute("ALTER TABLE precos ADD COLUMN IF NOT EXISTS id SERIAL;")
+            
+            # 2. Adiciona coluna para o Nome legível
+            cur.execute("ALTER TABLE precos ADD COLUMN IF NOT EXISTS nome VARCHAR(200);")
+            
+            # 3. Preenche nomes vazios baseando-se na chave (apenas para os itens antigos)
+            cur.execute("UPDATE precos SET nome = INITCAP(REPLACE(chave, '_', ' ')) WHERE nome IS NULL;")
+            
+            # Atualiza categorias antigas
             cur.execute("UPDATE precos SET categoria = 'CFTV' WHERE chave LIKE '%cftv%';")
             cur.execute("UPDATE precos SET categoria = 'Motor de Portão' WHERE chave LIKE 'mao_motor%';")
             cur.execute("""
@@ -40,7 +63,7 @@ def upgrade_database():
             """)
     except Exception as e:
         conn.rollback()
-        st.error(f"Erro ao preparar o banco: {e}")
+        st.error(f"Erro ao preparar a base de dados: {e}")
 
 upgrade_database()
 
@@ -50,11 +73,11 @@ upgrade_database()
 categorias_disponiveis = ["CFTV", "Cerca/Concertina", "Motor de Portão", "Outros"]
 
 with st.expander("➕ Adicionar Novo Item de Serviço", expanded=False):
-    st.info("Lembre-se: Após adicionar um item aqui, você precisará editar o código em `services/` para que o sistema saiba quando cobrar este item.")
+    st.info("Só precisa de preencher o Nome e o Valor. O sistema irá gerar o código e o ID automaticamente para si.")
     with st.form("form_novo_item", clear_on_submit=True):
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3 = st.columns([2, 1, 1])
         with col1:
-            nova_chave = st.text_input("Chave do Item (ex: cftv_cabo_rede)", placeholder="sem_espacos_ou_acentos")
+            novo_nome = st.text_input("Nome do Item (ex: Cabo de Aço 8mm)")
         with col2:
             novo_valor = st.number_input("Valor Unitário (R$)", min_value=0.0, step=0.5, format="%.2f")
         with col3:
@@ -63,17 +86,19 @@ with st.expander("➕ Adicionar Novo Item de Serviço", expanded=False):
         submit_novo = st.form_submit_button("Salvar Novo Item", type="primary")
         
         if submit_novo:
-            if not nova_chave.strip():
-                st.warning("A chave do item não pode estar vazia.")
+            if not novo_nome.strip():
+                st.warning("O Nome do item não pode estar vazio.")
             else:
                 try:
-                    chave_limpa = nova_chave.strip().lower().replace(" ", "_")
+                    # Gera a chave invisível para o sistema
+                    chave_gerada = gerar_chave(novo_nome)
+                    
                     with conn.cursor() as cur:
                         cur.execute(
-                            "INSERT INTO precos (chave, valor, categoria) VALUES (%s, %s, %s) ON CONFLICT (chave) DO NOTHING",
-                            (chave_limpa, novo_valor, nova_categoria)
+                            "INSERT INTO precos (chave, nome, valor, categoria) VALUES (%s, %s, %s, %s) ON CONFLICT (chave) DO NOTHING",
+                            (chave_gerada, novo_nome.strip(), novo_valor, nova_categoria)
                         )
-                    st.success(f"Item '{chave_limpa}' adicionado com sucesso!")
+                    st.success(f"Item '{novo_nome}' adicionado com sucesso! Código gerado: {chave_gerada}")
                     st.rerun()
                 except Exception as e:
                     conn.rollback()
@@ -85,16 +110,16 @@ with st.expander("➕ Adicionar Novo Item de Serviço", expanded=False):
 df = pd.DataFrame()
 try:
     with conn.cursor() as cur:
-        cur.execute("SELECT chave, valor, categoria FROM precos ORDER BY chave")
+        # Trazemos o ID e o Nome agora
+        cur.execute("SELECT id, chave, nome, valor, categoria FROM precos ORDER BY id")
         rows = cur.fetchall()
         if rows:
-            # AQUI ESTÁ A CORREÇÃO: Forçamos o Pandas a saber o nome das colunas!
-            df = pd.DataFrame(rows, columns=["chave", "valor", "categoria"])
+            df = pd.DataFrame(rows, columns=["id", "chave", "nome", "valor", "categoria"])
             df["valor"] = df["valor"].astype(float)
 except Exception as e:
     conn.rollback()
-    st.error(f"Erro ao ler banco de dados: {e}")
-    st.stop() # Para a execução se o banco falhar
+    st.error(f"Erro ao ler base de dados: {e}")
+    st.stop()
 
 if df.empty:
     st.warning("Nenhum preço encontrado. Use o formulário acima para adicionar.")
@@ -104,7 +129,7 @@ if df.empty:
 # Interface em Abas
 # =========================
 st.write("### Tabela de Preços")
-st.write("Edite os valores abaixo e clique no botão **Salvar Alterações** correspondente à aba.")
+st.write("Edite os nomes e valores abaixo. De seguida clique no botão **Salvar Alterações** da respetiva aba.")
 
 categorias_existentes = sorted(list(set(df["categoria"].dropna().unique()) | set(categorias_disponiveis)))
 abas = st.tabs(categorias_existentes)
@@ -114,36 +139,43 @@ for i, cat in enumerate(categorias_existentes):
         df_cat = df[df["categoria"] == cat].copy()
         
         if df_cat.empty:
-            st.info(f"Nenhum item cadastrado na categoria {cat}.")
+            st.info(f"Nenhum item registado na categoria {cat}.")
             continue
 
+        # Novo editor com colunas reordenadas e personalizadas
         edited_df = st.data_editor(
             df_cat,
-            disabled=["chave", "categoria"],
+            disabled=["id", "chave", "categoria"], # O utilizador só pode editar Nome e Valor
             use_container_width=True,
             hide_index=True,
             key=f"editor_{cat}",
+            column_order=["id", "nome", "valor", "chave"], # Mostra o ID e o Nome primeiro
             column_config={
-                "chave": st.column_config.TextColumn("Identificador (Chave)"),
+                "id": st.column_config.NumberColumn("ID", format="%d"),
+                "nome": st.column_config.TextColumn("Nome do Item (Visual)"),
                 "categoria": None, 
                 "valor": st.column_config.NumberColumn(
                     "Valor em R$",
                     min_value=0.0,
                     step=0.5,
                     format="R$ %.2f"
+                ),
+                "chave": st.column_config.TextColumn(
+                    "Código (Para Python)", 
+                    help="Copie este código quando precisar de criar um serviço no ficheiro .py"
                 )
             }
         )
         
-        if st.button(f"💾 Salvar preços de {cat}", key=f"btn_salvar_{cat}", type="secondary"):
+        if st.button(f"💾 Salvar alterações de {cat}", key=f"btn_salvar_{cat}", type="secondary"):
             try:
                 with conn.cursor() as cur:
                     for index, row in edited_df.iterrows():
                         cur.execute(
-                            "UPDATE precos SET valor = %s WHERE chave = %s",
-                            (row["valor"], row["chave"])
+                            "UPDATE precos SET valor = %s, nome = %s WHERE chave = %s",
+                            (row["valor"], row["nome"], row["chave"])
                         )
-                st.success(f"✅ Preços de {cat} atualizados!")
+                st.success(f"✅ Alterações guardadas com sucesso!")
             except Exception as e:
                 conn.rollback()
                 st.error(f"Erro ao atualizar: {e}")
