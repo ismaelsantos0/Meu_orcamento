@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 
 from core.materials import build_materials_list, materials_text_for_whatsapp
+from core.db import get_conn  # Importação vitalícia para conectar ao PostgreSQL
 
 
 # =========================
@@ -50,7 +51,6 @@ def load_plugins():
 def generate_pdf_bytes(quote: dict, *, logo_path: str | None = None) -> bytes:
     """
     Tenta gerar PDF usando core/pdf/pdf.py.
-    Ajuste aqui caso o nome da função no seu projeto seja diferente.
     """
     from core.pdf import pdf as pdfmod  # core/pdf/pdf.py
 
@@ -65,8 +65,7 @@ def generate_pdf_bytes(quote: dict, *, logo_path: str | None = None) -> bytes:
 
     raise RuntimeError(
         "Não encontrei função de PDF em core/pdf/pdf.py. "
-        "Abra esse arquivo e veja o nome da função que gera o PDF, "
-        "aí eu ajusto esse wrapper em 1 linha."
+        "Abra esse arquivo e veja o nome da função que gera o PDF."
     )
 
 
@@ -116,7 +115,7 @@ plugin_by_label = {p.label: p for p in plugins}
 service_label = st.selectbox("Selecione o serviço", options=list(plugin_by_label.keys()))
 plugin = plugin_by_label[service_label]
 
-st.caption(f"Serviço selecionado: **{plugin.label}**  •  ID: `{plugin.id}`")
+st.caption(f"Serviço selecionado: **{plugin.label}** •  ID: `{plugin.id}`")
 
 # Campos do serviço
 st.subheader("Dados do serviço")
@@ -132,21 +131,22 @@ if not gerar:
     st.stop()
 
 # =========================
-# Conexão DB (se existir)
+# Conexão DB
 # =========================
-conn = None
 try:
-    # Se você tiver algo como core/db.py com get_conn(), descomente:
-    # from core.db import get_conn
-    # conn = get_conn()
-    pass
-except Exception:
-    conn = None
+    conn = get_conn()
+except Exception as e:
+    st.error(f"Falha ao conectar no banco de dados: {e}")
+    st.stop()
 
 # =========================
 # Calcula orçamento
 # =========================
-quote = plugin.compute(conn, inputs)
+try:
+    quote = plugin.compute(conn, inputs)
+except Exception as e:
+    st.error(f"Erro ao calcular itens do orçamento. Verifique os preços no banco: {e}")
+    st.stop()
 
 # Injeta dados do cliente
 quote["client_name"] = cliente_nome
@@ -172,19 +172,20 @@ st.markdown(f"### Total: **{brl(subtotal)}**")
 st.divider()
 st.subheader("📄 PDF do orçamento")
 
-if st.button("Gerar PDF agora", use_container_width=True):
-    try:
-        pdf_bytes = generate_pdf_bytes(quote, logo_path=logo_path)
-        filename = f"orcamento_{plugin.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-        st.download_button(
-            "⬇️ Baixar PDF",
-            data=pdf_bytes,
-            file_name=filename,
-            mime="application/pdf",
-            use_container_width=True,
-        )
-    except Exception as e:
-        st.error(f"Erro ao gerar PDF: {e}")
+# O botão do Streamlit para download não precisa do try/except no clique como um botão normal
+try:
+    pdf_bytes = generate_pdf_bytes(quote, logo_path=logo_path)
+    filename = f"orcamento_{plugin.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    
+    st.download_button(
+        "⬇️ Baixar PDF",
+        data=pdf_bytes,
+        file_name=filename,
+        mime="application/pdf",
+        use_container_width=True,
+    )
+except Exception as e:
+    st.error(f"Erro ao gerar o arquivo PDF: {e}")
 
 # =========================
 # Lista de Materiais
