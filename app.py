@@ -51,6 +51,17 @@ def generate_pdf_bytes(single_quote: dict, *, logo_path: str | None = None) -> b
     """
     from core.pdf.complete import render_complete_pdf
     
+    # --- ESCUDO DE PROTEÇÃO ---
+    # Garante que 'summary_full' exista para o PDF não quebrar (útil para a concertina_linear)
+    if "summary_full" not in single_quote:
+        desc = single_quote.get("service_description", {})
+        if isinstance(desc, dict):
+            # Se for o formato de dicionário da concertina, pega a chave 'description'
+            single_quote["summary_full"] = desc.get("description", "Serviço de instalação e configuração.")
+        else:
+            single_quote["summary_full"] = str(desc) if desc else "Serviço de instalação e configuração."
+    # --------------------------
+
     # 1. Adaptar os dados do serviço atual para o formato que o PDF exige
     # ATENÇÃO: Edite os dados abaixo (Minha Empresa, whatsapp, etc) com os seus dados reais!
     quote_for_pdf = {
