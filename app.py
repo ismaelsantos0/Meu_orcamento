@@ -11,7 +11,6 @@ import streamlit as st
 from core.materials import build_materials_list, materials_text_for_whatsapp
 from core.db import get_conn
 
-
 # =========================
 # Registry de serviços (plugins)
 # =========================
@@ -35,26 +34,36 @@ def load_plugins():
 
 
 # =========================
-# PDF - Wrapper Atualizado para 2 Modelos
+# PDF - Wrapper Atualizado
 # =========================
-def generate_pdf_bytes(single_quote: dict, tipo: str = "complete", logo_path: str | None = None) -> bytes:
+def generate_pdf_bytes(single_quote: dict, tipo: str = "summary", logo_path: str | None = None) -> bytes:
     """
-    Gera o PDF. Se tipo="summary", gera o PDF bonito pro cliente.
-    Se tipo="complete", gera o PDF com a tabela de custos interna.
+    Gera o PDF. Focado agora na proposta comercial e recuperando textos ricos.
     """
+    # Resgata a descrição rica, itens inclusos e vantagens!
     if "summary_full" not in single_quote:
         desc = single_quote.get("service_description", {})
         if isinstance(desc, dict):
-            single_quote["summary_full"] = desc.get("description", "Serviço de instalação e configuração.")
-            single_quote["summary_client"] = desc.get("description", "Serviço de instalação e configuração.")
+            texto_base = desc.get("description", "Serviço de instalação.")
+            inclusos = desc.get("includes", [])
+            vantagens = desc.get("advantages", [])
+            
+            texto_formatado = texto_base
+            if inclusos:
+                texto_formatado += "\n\nO que está incluso:\n• " + "\n• ".join(inclusos)
+            if vantagens:
+                texto_formatado += "\n\nPrincipais Vantagens:\n• " + "\n• ".join(vantagens)
+                
+            single_quote["summary_full"] = texto_formatado
+            single_quote["summary_client"] = texto_formatado
         else:
             single_quote["summary_full"] = str(desc) if desc else "Serviço de instalação."
             single_quote["summary_client"] = str(desc) if desc else "Serviço de instalação."
 
     quote_for_pdf = {
         "logo_path": logo_path,
-        "empresa": "Sua Empresa de Segurança", # <-- COLOQUE SEU NOME AQUI
-        "whatsapp": single_quote.get("client_phone") or "(00) 00000-0000",
+        "empresa": "RR Smart Soluções", 
+        "whatsapp": single_quote.get("client_phone") or "(95) 98418-7832", 
         "data_str": datetime.now().strftime("%d/%m/%Y"),
         "cliente": single_quote.get("client_name") or "Cliente não informado",
         "servicos": [single_quote], 
@@ -62,20 +71,15 @@ def generate_pdf_bytes(single_quote: dict, tipo: str = "complete", logo_path: st
         "desconto_valor": 0.0,
         "desconto_label": "",
         "total": single_quote.get("subtotal", 0.0),
-        "pagamento": "À vista ou 50% entrada / 50% na entrega", # <-- FORMA DE PAGAMENTO
+        "pagamento": "À vista ou 50% entrada / 50% na entrega", 
         "garantia": "Garantia de 90 dias",
         "validade_dias": 7
     }
 
     buffer = io.BytesIO()
     
-    # Escolhe qual arquivo do PDF usar baseado no botão que foi clicado
-    if tipo == "summary":
-        from core.pdf.summary import render_summary_pdf
-        render_summary_pdf(buffer, quote_for_pdf)
-    else:
-        from core.pdf.complete import render_complete_pdf
-        render_complete_pdf(buffer, quote_for_pdf)
+    from core.pdf.summary import render_summary_pdf
+    render_summary_pdf(buffer, quote_for_pdf)
 
     pdf_bytes = buffer.getvalue()
     buffer.close()
@@ -194,15 +198,17 @@ if extras_to_add:
         
     qtd_extras = len(extras_to_add)
     if "summary_client" in quote:
-        quote["summary_client"] += f"\n+ {qtd_extras} tipo(s) de item(ns) extra(s) incluso(s)."
-    if "summary_full" in quote:
-        quote["summary_full"] += f"\n+ Inclui {qtd_extras} tipo(s) de item(ns) extra(s) (ver detalhamento)."
+        quote["summary_client"] += f"\n\nItens Adicionais Selecionados:\n• {qtd_extras} tipo(s) de item(ns) extra(s) incluso(s)."
 
 quote["client_name"] = cliente_nome
 quote["client_phone"] = cliente_tel
 quote["notes"] = obs_geral
 
-st.subheader("Itens do orçamento")
+# =========================
+# CONTROLE INTERNO (TELA)
+# =========================
+st.subheader("Seu Controle Interno (Custos e Quantidades)")
+st.write("Estes dados são apenas para você conferir a matemática do serviço. Eles não aparecem no PDF.")
 items_df = pd.DataFrame(quote.get("items", []))
 if not items_df.empty:
     st.dataframe(items_df, use_container_width=True)
@@ -210,47 +216,28 @@ else:
     st.warning("Nenhum item retornado pelo serviço.")
 
 subtotal = float(quote.get("subtotal", 0.0))
-st.markdown(f"### Total: **{brl(subtotal)}**")
+st.markdown(f"### Total Calculado: **{brl(subtotal)}**")
 
 # =========================
-# PDF - MÚLTIPLAS OPÇÕES (MÁGICA AQUI)
+# PDF - MODO CLIENTE
 # =========================
 st.divider()
-st.subheader("📄 PDFs do Orçamento")
-st.write("Escolha qual versão do arquivo PDF você quer baixar:")
+st.subheader("📄 Proposta Comercial (Para o Cliente)")
+st.write("Use o botão abaixo para baixar o PDF focado em benefícios e valor total, perfeito para enviar pelo WhatsApp.")
 
-col_pdf1, col_pdf2 = st.columns(2)
-
-# Botão 1: O PDF limpo, apenas com benefícios e o valor final
-with col_pdf1:
-    try:
-        pdf_cliente = generate_pdf_bytes(quote, tipo="summary", logo_path=logo_path)
-        st.download_button(
-            label="🧑‍💼 Baixar Proposta para CLIENTE",
-            help="Mostra apenas os serviços, benefícios e valor total. Sem lista de peças.",
-            data=pdf_cliente,
-            file_name=f"Proposta_{plugin.id}_{datetime.now().strftime('%Y%m%d')}.pdf",
-            mime="application/pdf",
-            use_container_width=True,
-            type="primary" # Fica com a cor de destaque
-        )
-    except Exception as e:
-        st.error(f"Erro ao gerar PDF do Cliente: {e}")
-
-# Botão 2: O PDF completo, com a tabela item por item
-with col_pdf2:
-    try:
-        pdf_completo = generate_pdf_bytes(quote, tipo="complete", logo_path=logo_path)
-        st.download_button(
-            label="📋 Baixar PDF COMPLETO (Interno)",
-            help="Mostra a tabela detalhada com cada peça, quantidade e subtotal.",
-            data=pdf_completo,
-            file_name=f"Orcamento_Detalhado_{plugin.id}_{datetime.now().strftime('%Y%m%d')}.pdf",
-            mime="application/pdf",
-            use_container_width=True,
-        )
-    except Exception as e:
-        st.error(f"Erro ao gerar PDF Completo: {e}")
+try:
+    pdf_cliente = generate_pdf_bytes(quote, tipo="summary", logo_path=logo_path)
+    st.download_button(
+        label="🧑‍💼 Baixar Proposta em PDF",
+        help="Gera o PDF com serviços, vantagens e valor total, ocultando peças e custos.",
+        data=pdf_cliente,
+        file_name=f"Proposta_{plugin.id}_{datetime.now().strftime('%Y%m%d')}.pdf",
+        mime="application/pdf",
+        use_container_width=True,
+        type="primary" 
+    )
+except Exception as e:
+    st.error(f"Erro ao gerar PDF do Cliente: {e}")
 
 # =========================
 # Lista de Materiais
@@ -280,3 +267,12 @@ if materials:
     )
 
     st.text_area("Texto para enviar no WhatsApp (copiar/colar)", text, height=220)
+
+    csv = mats_df.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        "⬇️ Baixar CSV da lista de materiais",
+        data=csv,
+        file_name=f"lista_materiais_{plugin.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
