@@ -11,6 +11,7 @@ import streamlit as st
 from core.materials import build_materials_list, materials_text_for_whatsapp
 from core.db import get_conn
 
+
 # =========================
 # Registry de serviços (plugins)
 # =========================
@@ -197,6 +198,7 @@ if extras_to_add:
         quote["subtotal"] += sub
         
     qtd_extras = len(extras_to_add)
+    # Atualiza o summary_client com os itens adicionais antes de gerar o texto do WhatsApp
     if "summary_client" in quote:
         quote["summary_client"] += f"\n\nItens Adicionais Selecionados:\n• {qtd_extras} tipo(s) de item(ns) extra(s) incluso(s)."
 
@@ -219,25 +221,52 @@ subtotal = float(quote.get("subtotal", 0.0))
 st.markdown(f"### Total Calculado: **{brl(subtotal)}**")
 
 # =========================
-# PDF - MODO CLIENTE
+# PDF E TEXTO WPP - MODO CLIENTE
 # =========================
 st.divider()
 st.subheader("📄 Proposta Comercial (Para o Cliente)")
-st.write("Use o botão abaixo para baixar o PDF focado em benefícios e valor total, perfeito para enviar pelo WhatsApp.")
+st.write("Use o botão abaixo para baixar o PDF ou copie o texto para enviar no WhatsApp.")
 
-try:
-    pdf_cliente = generate_pdf_bytes(quote, tipo="summary", logo_path=logo_path)
-    st.download_button(
-        label="🧑‍💼 Baixar Proposta em PDF",
-        help="Gera o PDF com serviços, vantagens e valor total, ocultando peças e custos.",
-        data=pdf_cliente,
-        file_name=f"Proposta_{plugin.id}_{datetime.now().strftime('%Y%m%d')}.pdf",
-        mime="application/pdf",
-        use_container_width=True,
-        type="primary" 
-    )
-except Exception as e:
-    st.error(f"Erro ao gerar PDF do Cliente: {e}")
+col_pdf, col_wpp = st.columns([1, 2])
+
+with col_pdf:
+    try:
+        pdf_cliente = generate_pdf_bytes(quote, tipo="summary", logo_path=logo_path)
+        st.download_button(
+            label="🧑‍💼 Baixar Proposta em PDF",
+            help="Gera o PDF com serviços, vantagens e valor total.",
+            data=pdf_cliente,
+            file_name=f"Proposta_{plugin.id}_{datetime.now().strftime('%Y%m%d')}.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+            type="primary" 
+        )
+    except Exception as e:
+        st.error(f"Erro ao gerar PDF do Cliente: {e}")
+
+with col_wpp:
+    # Formata o texto para o WhatsApp usando * para negrito
+    wpp_texto = f"🛡️ *RR Smart Soluções*\n\n"
+    if cliente_nome:
+        wpp_texto += f"Olá, *{cliente_nome}*! Segue a nossa proposta comercial:\n\n"
+    else:
+        wpp_texto += "Olá! Segue a nossa proposta comercial:\n\n"
+
+    wpp_texto += f"🛠️ *Serviço:* {quote.get('service_name', '')}\n"
+    
+    # Pega o texto gerado (que já contém inclusos e vantagens, se existirem)
+    desc_wpp = quote.get("summary_client", quote.get("summary_full", ""))
+    if desc_wpp:
+        wpp_texto += f"{desc_wpp}\n\n"
+
+    wpp_texto += f"💰 *Investimento Total: {brl(subtotal)}*\n\n"
+    wpp_texto += f"💳 *Condições de Pagamento:*\nÀ vista ou 50% entrada / 50% na entrega\n\n"
+    wpp_texto += f"⚙️ *Garantia:* 90 dias\n"
+    wpp_texto += f"⏳ *Validade do Orçamento:* 7 dias\n\n"
+    wpp_texto += "Qualquer dúvida, estou à disposição para fecharmos o serviço! 🤝"
+    
+    st.text_area("💬 Copiar para WhatsApp", wpp_texto, height=250)
+
 
 # =========================
 # Lista de Materiais
@@ -257,7 +286,7 @@ if materials:
     mats_df = pd.DataFrame(materials)
     st.dataframe(mats_df, use_container_width=True)
 
-    text = materials_text_for_whatsapp(
+    text_materiais = materials_text_for_whatsapp(
         materials,
         header_lines=[
             f"Serviço: {quote.get('service_name', '')}",
@@ -266,7 +295,7 @@ if materials:
         ],
     )
 
-    st.text_area("Texto para enviar no WhatsApp (copiar/colar)", text, height=220)
+    st.text_area("Lista de Peças (copiar/colar)", text_materiais, height=220)
 
     csv = mats_df.to_csv(index=False).encode("utf-8")
     st.download_button(
