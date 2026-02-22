@@ -9,7 +9,7 @@ import pandas as pd
 import streamlit as st
 
 from core.materials import build_materials_list, materials_text_for_whatsapp
-from core.db import get_conn  # Importação para conectar ao PostgreSQL
+from core.db import get_conn
 
 
 # =========================
@@ -17,11 +17,7 @@ from core.db import get_conn  # Importação para conectar ao PostgreSQL
 # =========================
 import services.registry as registry
 
-
 def load_plugins():
-    """
-    Carrega os plugins de serviço dinamicamente.
-    """
     if hasattr(registry, "get_plugins") and callable(getattr(registry, "get_plugins")):
         plugins = registry.get_plugins()
     elif hasattr(registry, "REGISTRY"):
@@ -31,40 +27,34 @@ def load_plugins():
     elif hasattr(registry, "plugins"):
         plugins = registry.plugins
     else:
-        raise RuntimeError(
-            "Não encontrei plugins no services/registry.py "
-            "(esperado: get_plugins(), REGISTRY, PLUGINS ou plugins)"
-        )
+        raise RuntimeError("Não encontrei plugins no services/registry.py")
 
     if isinstance(plugins, dict):
         return list(plugins.values())
-
     return list(plugins)
 
 
 # =========================
-# PDF - Wrapper Corrigido
+# PDF - Wrapper Atualizado para 2 Modelos
 # =========================
-def generate_pdf_bytes(single_quote: dict, *, logo_path: str | None = None) -> bytes:
+def generate_pdf_bytes(single_quote: dict, tipo: str = "complete", logo_path: str | None = None) -> bytes:
     """
-    Usa o core/pdf/complete.py para gerar o PDF na memória e retornar os bytes.
+    Gera o PDF. Se tipo="summary", gera o PDF bonito pro cliente.
+    Se tipo="complete", gera o PDF com a tabela de custos interna.
     """
-    from core.pdf.complete import render_complete_pdf
-    
-    # --- ESCUDO DE PROTEÇÃO ---
     if "summary_full" not in single_quote:
         desc = single_quote.get("service_description", {})
         if isinstance(desc, dict):
             single_quote["summary_full"] = desc.get("description", "Serviço de instalação e configuração.")
+            single_quote["summary_client"] = desc.get("description", "Serviço de instalação e configuração.")
         else:
-            single_quote["summary_full"] = str(desc) if desc else "Serviço de instalação e configuração."
-    # --------------------------
+            single_quote["summary_full"] = str(desc) if desc else "Serviço de instalação."
+            single_quote["summary_client"] = str(desc) if desc else "Serviço de instalação."
 
-    # 1. Adaptar os dados do serviço atual para o formato que o PDF exige
     quote_for_pdf = {
         "logo_path": logo_path,
         "empresa": "Sua Empresa de Segurança", # <-- COLOQUE SEU NOME AQUI
-        "whatsapp": single_quote.get("client_phone") or "(00) 00000-0000", # <-- SEU NÚMERO
+        "whatsapp": single_quote.get("client_phone") or "(00) 00000-0000",
         "data_str": datetime.now().strftime("%d/%m/%Y"),
         "cliente": single_quote.get("client_name") or "Cliente não informado",
         "servicos": [single_quote], 
@@ -72,16 +62,23 @@ def generate_pdf_bytes(single_quote: dict, *, logo_path: str | None = None) -> b
         "desconto_valor": 0.0,
         "desconto_label": "",
         "total": single_quote.get("subtotal", 0.0),
-        "pagamento": "À vista ou 50% entrada / 50% na entrega", # <-- SUA FORMA DE PAGTO
-        "garantia": "Garantia de 90 dias", # <-- SUA GARANTIA
+        "pagamento": "À vista ou 50% entrada / 50% na entrega", # <-- FORMA DE PAGAMENTO
+        "garantia": "Garantia de 90 dias",
         "validade_dias": 7
     }
 
     buffer = io.BytesIO()
-    render_complete_pdf(buffer, quote_for_pdf)
+    
+    # Escolhe qual arquivo do PDF usar baseado no botão que foi clicado
+    if tipo == "summary":
+        from core.pdf.summary import render_summary_pdf
+        render_summary_pdf(buffer, quote_for_pdf)
+    else:
+        from core.pdf.complete import render_complete_pdf
+        render_complete_pdf(buffer, quote_for_pdf)
+
     pdf_bytes = buffer.getvalue()
     buffer.close()
-    
     return pdf_bytes
 
 
@@ -103,7 +100,6 @@ DEFAULT_LOGO = ASSETS_DIR / "logo.png"
 
 st.title("🧾 Gerador de Orçamentos")
 
-# Sidebar: configurações
 with st.sidebar:
     st.header("Configurações")
     usar_logo = st.checkbox("Usar logo no PDF", value=DEFAULT_LOGO.exists())
@@ -115,7 +111,6 @@ with st.sidebar:
     cliente_tel = st.text_input("Telefone/WhatsApp do cliente", value="")
     obs_geral = st.text_area("Observações gerais", value="", height=90)
 
-# Carrega plugins
 try:
     plugins = load_plugins()
 except Exception as e:
@@ -127,32 +122,20 @@ if not plugins:
     st.stop()
 
 plugin_by_label = {p.label: p for p in plugins}
-
 service_label = st.selectbox("Selecione o serviço", options=list(plugin_by_label.keys()))
 plugin = plugin_by_label[service_label]
 
 st.caption(f"Serviço selecionado: **{plugin.label}** • ID: `{plugin.id}`")
 
-# =========================
-# Conexão DB (Movida para cima para ler os extras)
-# =========================
 try:
     conn = get_conn()
 except Exception as e:
     st.error(f"Falha ao conectar no banco de dados: {e}")
     st.stop()
 
-
-# =========================
-# DADOS DO SERVIÇO PRINCIPAL
-# =========================
 st.subheader("Dados do serviço")
 inputs = plugin.render_fields()
 
-
-# =========================
-# ITENS EXTRAS (MÁGICA AQUI)
-# =========================
 st.divider()
 st.subheader("➕ Itens e Serviços Adicionais (Opcional)")
 st.write("Selecione sensores, cabos extras, ou qualquer outro item avulso para somar neste orçamento.")
@@ -160,11 +143,9 @@ st.write("Selecione sensores, cabos extras, ou qualquer outro item avulso para s
 extras_to_add = []
 try:
     with conn.cursor() as cur:
-        # Busca todos os itens do banco para mostrar nas opções
         cur.execute("SELECT chave, nome, valor FROM precos ORDER BY nome")
         db_items = cur.fetchall()
         
-    # Prepara o dicionário para a caixa de seleção
     items_dict = {}
     for row in db_items:
         chave = row[0]
@@ -173,24 +154,13 @@ try:
         label = f"{nome} (R$ {valor:.2f})"
         items_dict[label] = {"chave": chave, "nome": nome, "valor": valor}
         
-    # Caixa onde você pode digitar e selecionar múltiplos itens
-    selected_extra_labels = st.multiselect(
-        "Selecione os itens extras", 
-        options=list(items_dict.keys()),
-        placeholder="Clique para buscar um item extra..."
-    )
+    selected_extra_labels = st.multiselect("Selecione os itens extras", options=list(items_dict.keys()), placeholder="Buscar...")
     
-    # Se escolheu algum item, mostra as caixas de quantidade lado a lado
     if selected_extra_labels:
-        st.write("**Defina a quantidade para cada item extra:**")
         cols = st.columns(min(len(selected_extra_labels), 4))
         for i, label in enumerate(selected_extra_labels):
             with cols[i % 4]:
-                qty = st.number_input(
-                    f"Qtd: {items_dict[label]['nome']}", 
-                    min_value=1, value=1, step=1, 
-                    key=f"extra_qty_{items_dict[label]['chave']}"
-                )
+                qty = st.number_input(f"Qtd: {items_dict[label]['nome']}", min_value=1, value=1, step=1, key=f"extra_qty_{items_dict[label]['chave']}")
                 extras_to_add.append({"item": items_dict[label], "qty": qty})
 
 except Exception as e:
@@ -198,9 +168,6 @@ except Exception as e:
 
 st.divider()
 
-# =========================
-# BOTÃO DE GERAR
-# =========================
 colA, colB = st.columns([1, 2])
 with colA:
     gerar = st.button("✅ Gerar orçamento", use_container_width=True, type="primary")
@@ -210,52 +177,31 @@ with colB:
 if not gerar:
     st.stop()
 
-# =========================
-# Calcula orçamento base
-# =========================
 try:
     quote = plugin.compute(conn, inputs)
 except Exception as e:
     st.error(f"Erro ao calcular itens do orçamento. Verifique os preços no banco: {e}")
     st.stop()
 
-
-# =========================
-# INJETA OS EXTRAS NO ORÇAMENTO
-# =========================
 if extras_to_add:
     for extra in extras_to_add:
         item_data = extra["item"]
         qty = extra["qty"]
         sub = qty * item_data["valor"]
         
-        # Adiciona na lista de itens
-        quote["items"].append({
-            "desc": f"[EXTRA] {item_data['nome']}",
-            "qty": qty,
-            "unit": item_data["valor"],
-            "sub": sub
-        })
-        
-        # Soma no subtotal
+        quote["items"].append({"desc": f"[EXTRA] {item_data['nome']}", "qty": qty, "unit": item_data["valor"], "sub": sub})
         quote["subtotal"] += sub
         
-    # Atualiza as descrições para avisar que tem itens extras
     qtd_extras = len(extras_to_add)
     if "summary_client" in quote:
         quote["summary_client"] += f"\n+ {qtd_extras} tipo(s) de item(ns) extra(s) incluso(s)."
     if "summary_full" in quote:
         quote["summary_full"] += f"\n+ Inclui {qtd_extras} tipo(s) de item(ns) extra(s) (ver detalhamento)."
 
-
-# Injeta dados do cliente na cotação para o PDF
 quote["client_name"] = cliente_nome
 quote["client_phone"] = cliente_tel
 quote["notes"] = obs_geral
 
-# =========================
-# Itens na Tela
-# =========================
 st.subheader("Itens do orçamento")
 items_df = pd.DataFrame(quote.get("items", []))
 if not items_df.empty:
@@ -267,24 +213,44 @@ subtotal = float(quote.get("subtotal", 0.0))
 st.markdown(f"### Total: **{brl(subtotal)}**")
 
 # =========================
-# PDF
+# PDF - MÚLTIPLAS OPÇÕES (MÁGICA AQUI)
 # =========================
 st.divider()
-st.subheader("📄 PDF do orçamento")
+st.subheader("📄 PDFs do Orçamento")
+st.write("Escolha qual versão do arquivo PDF você quer baixar:")
 
-try:
-    pdf_bytes = generate_pdf_bytes(quote, logo_path=logo_path)
-    filename = f"orcamento_{plugin.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-    
-    st.download_button(
-        label="⬇️ Baixar PDF Completo",
-        data=pdf_bytes,
-        file_name=filename,
-        mime="application/pdf",
-        use_container_width=True,
-    )
-except Exception as e:
-    st.error(f"Erro ao gerar o arquivo PDF: {e}")
+col_pdf1, col_pdf2 = st.columns(2)
+
+# Botão 1: O PDF limpo, apenas com benefícios e o valor final
+with col_pdf1:
+    try:
+        pdf_cliente = generate_pdf_bytes(quote, tipo="summary", logo_path=logo_path)
+        st.download_button(
+            label="🧑‍💼 Baixar Proposta para CLIENTE",
+            help="Mostra apenas os serviços, benefícios e valor total. Sem lista de peças.",
+            data=pdf_cliente,
+            file_name=f"Proposta_{plugin.id}_{datetime.now().strftime('%Y%m%d')}.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+            type="primary" # Fica com a cor de destaque
+        )
+    except Exception as e:
+        st.error(f"Erro ao gerar PDF do Cliente: {e}")
+
+# Botão 2: O PDF completo, com a tabela item por item
+with col_pdf2:
+    try:
+        pdf_completo = generate_pdf_bytes(quote, tipo="complete", logo_path=logo_path)
+        st.download_button(
+            label="📋 Baixar PDF COMPLETO (Interno)",
+            help="Mostra a tabela detalhada com cada peça, quantidade e subtotal.",
+            data=pdf_completo,
+            file_name=f"Orcamento_Detalhado_{plugin.id}_{datetime.now().strftime('%Y%m%d')}.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+        )
+    except Exception as e:
+        st.error(f"Erro ao gerar PDF Completo: {e}")
 
 # =========================
 # Lista de Materiais
@@ -300,9 +266,7 @@ materials = build_materials_list(
     group_same_desc=True,
 )
 
-if not materials:
-    st.warning("Não encontrei materiais para listar com as regras atuais.")
-else:
+if materials:
     mats_df = pd.DataFrame(materials)
     st.dataframe(mats_df, use_container_width=True)
 
@@ -316,12 +280,3 @@ else:
     )
 
     st.text_area("Texto para enviar no WhatsApp (copiar/colar)", text, height=220)
-
-    csv = mats_df.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        "⬇️ Baixar CSV da lista de materiais",
-        data=csv,
-        file_name=f"lista_materiais_{plugin.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-        mime="text/csv",
-        use_container_width=True,
-    )
