@@ -1,4 +1,4 @@
-# core/pdf/summary.py
+import textwrap
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
@@ -9,7 +9,6 @@ def render_summary_pdf(out_path, quote: dict):
     c = canvas.Canvas(out_path, pagesize=A4)
     w, h = A4
 
-    # Muda o título do cabeçalho
     draw_header(c, quote, "Proposta Comercial")
 
     y = h - 210
@@ -23,24 +22,49 @@ def render_summary_pdf(out_path, quote: dict):
         y -= 16
 
         c.setFont("Helvetica", 11)
-        # Pega a descrição focada no cliente (ou a completa se não tiver)
-        texto_beneficios = s.get("summary_client", s.get("summary_full", "Serviço de instalação padrão."))
+        texto_beneficios = s.get("summary_client", s.get("summary_full", "Serviço de instalação."))
         
-        # Quebra as linhas direitinho no PDF
-        for line in texto_beneficios.split("\n"):
-            c.drawString(55, y, line.strip())
-            y -= 16
-        y -= 10 # Espaço extra antes do próximo serviço
+        # Lê cada linha do texto e quebra automaticamente se for muito longa
+        for paragraph in texto_beneficios.split("\n"):
+            # O width=80 garante que o texto não ultrapassa a margem da folha
+            wrapped_lines = textwrap.wrap(paragraph, width=80) 
+            
+            if not wrapped_lines: # Se for uma linha vazia, dá só um espacinho
+                y -= 8
+                continue
+                
+            for line in wrapped_lines:
+                # Se for o título dos benefícios, coloca em Negrito
+                if line.startswith("O que está incluso") or line.startswith("Principais Vantagens"):
+                    c.setFont("Helvetica-Bold", 11)
+                else:
+                    c.setFont("Helvetica", 11)
+                    
+                c.drawString(55, y, line)
+                y -= 16
+                
+                # Se o texto chegar muito perto do fim da folha, cria uma nova página!
+                if y < 100:
+                    c.showPage()
+                    draw_header(c, quote, "Proposta Comercial (Continuação)")
+                    y = h - 180
+                    
+        y -= 15 # Espaço extra antes de um próximo serviço
 
     y -= 10
     c.line(40, y, 550, y)
-    y -= 35
+    y -= 40
+
+    # Verifica se há espaço para o valor total, se não, joga para a próxima página
+    if y < 180:
+        c.showPage()
+        draw_header(c, quote, "Proposta Comercial (Valores)")
+        y = h - 180
 
     c.setFont("Helvetica-Bold", 14)
     c.drawString(40, y, "Investimento Total")
-    y -= 30
-    c.setFont("Helvetica-Bold", 32)
-    # Mostra apenas o totalzão final
+    y -= 35
+    c.setFont("Helvetica-Bold", 34)
     c.drawString(40, y, brl(float(quote["total"])))
 
     y -= 60
@@ -57,6 +81,6 @@ def render_summary_pdf(out_path, quote: dict):
     c.drawString(40, y, "Dúvidas e Fechamento")
     y -= 16
     c.setFont("Helvetica", 10)
-    c.drawString(40, y, f"Para aprovar o orçamento ou tirar dúvidas, me chame no WhatsApp: {quote.get('whatsapp','')}")
+    c.drawString(40, y, f"Para aprovar o orçamento, chame no WhatsApp: {quote.get('whatsapp','')}")
 
     c.save()
