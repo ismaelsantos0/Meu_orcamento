@@ -1,54 +1,40 @@
 import streamlit as st
+import pandas as pd
 from core.db import get_conn
 
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
     st.stop()
 
-st.set_page_config(page_title="Vero | Ajustes", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Vero | Precos", layout="wide", initial_sidebar_state="collapsed")
 user_id = st.session_state.user_id
 
 st.markdown("""
 <style>
     header {visibility: hidden;} footer {visibility: hidden;}
     [data-testid="stSidebar"] { display: none; }
-    .stApp { background: radial-gradient(circle at 50% 50%, #101a26 0%, #080d12 100%); color: white; font-family: 'Poppins', sans-serif; }
+    .stApp { background: radial-gradient(circle at 50% 50%, #101a26 0%, #080d12 100%); color: white; }
     .stButton > button { background-color: #ffffff !important; color: #080d12 !important; border-radius: 50px !important; font-weight: 800 !important; }
-    [data-testid="stVerticalBlockBorderWrapper"] { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; }
 </style>
 """, unsafe_allow_html=True)
 
-if st.button("← VOLTAR"):
+if st.button("VOLTAR"):
     st.switch_page("app.py")
 
-st.title("⚙️ Configurações Vero")
+st.title("Tabela de Precos")
 
-def buscar_config():
-    conn = get_conn()
-    with conn.cursor() as cur:
-        cur.execute("SELECT nome_empresa, whatsapp, pagamento_padrao, garantia_padrao, validade_dias, logo FROM config_empresa WHERE usuario_id = %s", (user_id,))
-        return cur.fetchone()
-
-dados = buscar_config() or ("Empresa", "", "À vista", "90 dias", 7, None)
+conn = get_conn()
 
 with st.container(border=True):
-    with st.form("config"):
-        c1, c2 = st.columns(2)
-        with c1:
-            n = st.text_input("Nome da Empresa", value=dados[0])
-            w = st.text_input("WhatsApp", value=dados[1])
-            l = st.file_uploader("Trocar Logo", type=['png', 'jpg'])
-        with c2:
-            p = st.text_input("Pagamento", value=dados[2])
-            g = st.text_input("Garantia", value=dados[3])
-            v = st.number_input("Validade (Dias)", value=dados[4])
-        
-        if st.form_submit_button("ATUALIZAR DADOS"):
-            lb = l.read() if l else None
-            conn = get_conn()
+    with st.form("add"):
+        c1, c2, v = st.columns(3)
+        chave = c1.text_input("Chave")
+        nome = c2.text_input("Produto")
+        valor = v.number_input("Valor", min_value=0.0)
+        if st.form_submit_button("CADASTRAR"):
             with conn.cursor() as cur:
-                if buscar_config():
-                    cur.execute("UPDATE config_empresa SET nome_empresa=%s, whatsapp=%s, pagamento_padrao=%s, garantia_padrao=%s, validade_dias=%s, logo=COALESCE(%s, logo) WHERE usuario_id=%s", (n, w, p, g, v, lb, user_id))
-                else:
-                    cur.execute("INSERT INTO config_empresa (usuario_id, nome_empresa, whatsapp, pagamento_padrao, garantia_padrao, validade_dias, logo) VALUES (%s, %s, %s, %s, %s, %s, %s)", (user_id, n, w, p, g, v, lb))
+                cur.execute("INSERT INTO precos (chave, nome, valor, usuario_id) VALUES (%s, %s, %s, %s)", (chave, nome, valor, user_id))
             conn.commit()
-            st.success("Perfil atualizado!")
+            st.rerun()
+
+df = pd.read_sql("SELECT chave, nome, valor FROM precos WHERE usuario_id = %s", conn, params=(user_id,))
+st.data_editor(df, use_container_width=True)
