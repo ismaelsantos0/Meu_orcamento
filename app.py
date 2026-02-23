@@ -1,7 +1,7 @@
 import streamlit as st
 from core.db import get_conn
 
-st.set_page_config(page_title="Vero | Smart Systems", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Vero | RR Smart", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
 <style>
