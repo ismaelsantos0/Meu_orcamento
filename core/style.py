@@ -14,37 +14,44 @@ def apply_vero_style():
             color: #f8fafc;
         }
 
-        /* Cards Arredondados */
-        div[data-testid="stVerticalBlockBorderWrapper"] {
-            background: rgba(255, 255, 255, 0.03) !important;
-            border: 1px solid rgba(255, 255, 255, 0.08) !important;
-            border-radius: 28px !important;
-            padding: 20px !important;
+        /* CORREÇÃO: Remove a sobreposição de cards */
+        [data-testid="stVerticalBlock"] > div:has(div[data-testid="stVerticalBlockBorderWrapper"]) {
+            padding: 0px !important;
+            margin-bottom: 1rem !important;
         }
 
-        /* Botões Premium */
+        div[data-testid="stVerticalBlockBorderWrapper"] {
+            background: rgba(255, 255, 255, 0.03) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            border-radius: 24px !important;
+            padding: 30px !important;
+            margin: 0px !important;
+            height: 100% !important;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2) !important;
+        }
+
+        /* Ajuste de Botões para não ficarem colados */
         .stButton > button {
-            border-radius: 18px !important;
-            height: 55px !important;
+            margin-top: 15px !important;
+            border-radius: 14px !important;
+            height: 50px !important;
             background: #ffffff !important;
             color: #020617 !important;
             font-weight: 700 !important;
             border: none !important;
-            transition: all 0.3s ease !important;
+            width: 100% !important;
         }
 
         .stButton > button:hover {
-            transform: translateY(-2px) !important;
             background: #3b82f6 !important;
             color: white !important;
-            box-shadow: 0 10px 20px rgba(59, 130, 246, 0.3) !important;
+            transform: translateY(-2px);
         }
 
-        .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] {
-            background-color: rgba(255, 255, 255, 0.05) !important;
-            border-radius: 15px !important;
-            border: 1px solid rgba(255, 255, 255, 0.1) !important;
-            color: white !important;
+        /* Títulos mais limpos */
+        h1, h2, h3 {
+            margin-bottom: 1rem !important;
+            font-weight: 800 !important;
         }
     </style>
     """, unsafe_allow_html=True)
