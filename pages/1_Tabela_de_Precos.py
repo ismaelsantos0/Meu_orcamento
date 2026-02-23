@@ -3,7 +3,7 @@ import pandas as pd
 from core.db import get_conn
 
 # =========================
-# Configuração da Página e CSS Mágico (Pastas Organizadoras Reais)
+# Configuração da Página e CSS Mágico
 # =========================
 st.set_page_config(page_title="Tabela de Preços", page_icon="💰", layout="wide")
 
@@ -35,44 +35,36 @@ st.markdown("""
         border: 1px solid #333845 !important;
     }
 
-    /* =======================================================
-       MÁGICA: TRANSFORMA AS TABS NATIVAS EM PASTAS ORGANIZADORAS
-       ======================================================= */
-    /* Linha azul base que conecta as pastas */
+    /* MÁGICA: TRANSFORMA AS TABS NATIVAS EM PASTAS ORGANIZADORAS */
     [data-testid="stTabs"] > div[data-baseweb="tab-list"] {
         gap: 6px;
         border-bottom: 3px solid #3b82f6 !important; 
         padding-bottom: 0 !important;
     }
-    /* Estilo de cada "orelha" da pasta */
     [data-testid="stTabs"] button[role="tab"] {
         background-color: #1a1c23 !important;
         border: 1px solid #333845 !important;
         border-bottom: none !important;
-        border-radius: 12px 12px 0 0 !important; /* Arredondado só no topo */
+        border-radius: 12px 12px 0 0 !important; 
         padding: 10px 24px !important;
         margin: 0 !important;
         opacity: 0.6;
         color: #ffffff !important;
         transition: all 0.3s ease !important;
     }
-    /* Efeito ao passar o mouse */
     [data-testid="stTabs"] button[role="tab"]:hover {
         opacity: 0.9;
         background-color: #262933 !important;
     }
-    /* Quando a pasta está SELECIONADA (Ativa) */
     [data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
         background-color: #3b82f6 !important;
         border-color: #3b82f6 !important;
         opacity: 1;
         font-weight: bold !important;
     }
-    /* Oculta a linha vermelha feia do padrão do Streamlit */
     [data-testid="stTabs"] [data-baseweb="tab-highlight"] {
         display: none !important;
     }
-    /* Ajuste no container dentro da pasta */
     [data-testid="stTabs"] [data-baseweb="tab-panel"] {
         padding-top: 1.5rem !important;
     }
@@ -106,15 +98,14 @@ with st.container(border=True):
                 try:
                     conn = get_conn()
                     with conn.cursor() as cur:
-                        # Insere no banco de dados
                         cur.execute(
                             "INSERT INTO precos (chave, nome, valor) VALUES (%s, %s, %s) ON CONFLICT (chave) DO UPDATE SET nome = EXCLUDED.nome, valor = EXCLUDED.valor",
                             (nova_chave.strip(), novo_nome.strip(), novo_valor)
                         )
                     conn.commit()
-                    conn.close()
+                    # AQUI FOI REMOVIDO O conn.close()
                     st.success(f"Item '{novo_nome}' adicionado com sucesso!")
-                    st.rerun() # Atualiza a página para mostrar o item na tabela
+                    st.rerun() 
                 except Exception as e:
                     st.error(f"Erro ao salvar: {e}")
             else:
@@ -128,29 +119,25 @@ df = pd.DataFrame()
 try:
     conn = get_conn()
     df = pd.read_sql("SELECT chave, nome, valor FROM precos ORDER BY chave", conn)
-    conn.close()
+    # AQUI FOI REMOVIDO O conn.close()
 except Exception as e:
     st.error(f"Erro ao carregar os preços: {e}")
 
 
 # =========================
-# CARD 2: Tabela de Preços (Separada por Pastas/Tabs)
+# CARD 2: Tabela de Preços
 # =========================
-st.write("") # Espaço
+st.write("") 
 with st.container(border=True):
     st.subheader("📋 Tabela de Preços Atuais")
     st.write("Altere os valores diretamente na tabela abaixo e guarde as alterações.")
     
     if not df.empty:
-        # Separa os dados em categorias usando filtros no texto da chave
         df_cftv = df[df['chave'].str.contains('cftv', case=False, na=False)].copy()
         df_cerca = df[df['chave'].str.contains('cerca|concertina|haste', case=False, na=False)].copy()
         df_motor = df[df['chave'].str.contains('motor|portao|cremalheira', case=False, na=False)].copy()
-        
-        # O que sobrar vai para "Outros"
         df_outros = df[~df['chave'].isin(df_cftv['chave'].tolist() + df_cerca['chave'].tolist() + df_motor['chave'].tolist())].copy()
 
-        # Cria as Pastas Nativas (Tabs)
         aba_cftv, aba_cerca, aba_motor, aba_outros = st.tabs([
             f"📷 CFTV ({len(df_cftv)})", 
             f"⚡ Cerca/Concertina ({len(df_cerca)})", 
@@ -158,17 +145,15 @@ with st.container(border=True):
             f"🔧 Outros ({len(df_outros)})"
         ])
 
-        # Função auxiliar para editar e salvar
         def render_editor(dataframe, categoria_nome):
             if dataframe.empty:
                 st.info(f"Nenhum item encontrado para a categoria {categoria_nome}.")
                 return
 
-            # Editor de Tabela Bonito
             edited_df = st.data_editor(
                 dataframe,
                 use_container_width=True,
-                num_rows="dynamic", # Permite apagar linhas
+                num_rows="dynamic", 
                 column_config={
                     "chave": st.column_config.TextColumn("Chave (Não mude a menos que saiba)", disabled=True),
                     "nome": st.column_config.TextColumn("Nome do Item", required=True),
@@ -177,7 +162,6 @@ with st.container(border=True):
                 key=f"editor_{categoria_nome}"
             )
 
-            # Botão de salvar para cada pasta
             if st.button(f"💾 Guardar alterações de {categoria_nome}", type="primary"):
                 try:
                     conn = get_conn()
@@ -188,12 +172,11 @@ with st.container(border=True):
                                 (row['nome'], row['valor'], row['chave'])
                             )
                     conn.commit()
-                    conn.close()
+                    # AQUI FOI REMOVIDO O conn.close()
                     st.success(f"Preços de {categoria_nome} atualizados com sucesso!")
                 except Exception as e:
                     st.error(f"Erro ao atualizar o banco: {e}")
 
-        # Renderiza a tabela dentro de cada pasta
         with aba_cftv:
             render_editor(df_cftv, "CFTV")
             
