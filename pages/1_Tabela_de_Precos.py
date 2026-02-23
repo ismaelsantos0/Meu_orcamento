@@ -3,7 +3,7 @@ import pandas as pd
 from core.db import get_conn
 
 # =========================
-# Configuração da Página e CSS Mágico (O mesmo do app.py)
+# Configuração da Página e CSS Mágico (Pastas Organizadoras Reais)
 # =========================
 st.set_page_config(page_title="Tabela de Preços", page_icon="💰", layout="wide")
 
@@ -22,6 +22,10 @@ st.markdown("""
     .stButton > button {
         border-radius: 8px !important;
         font-weight: 600 !important;
+        transition: all 0.3s ease !important;
+    }
+    .stButton > button:hover {
+        transform: translateY(-2px);
     }
     
     /* Estilizando as Tabelas de Dados nativas do Streamlit */
@@ -29,6 +33,48 @@ st.markdown("""
         border-radius: 8px !important;
         overflow: hidden !important;
         border: 1px solid #333845 !important;
+    }
+
+    /* =======================================================
+       MÁGICA: TRANSFORMA AS TABS NATIVAS EM PASTAS ORGANIZADORAS
+       ======================================================= */
+    /* Linha azul base que conecta as pastas */
+    [data-testid="stTabs"] > div[data-baseweb="tab-list"] {
+        gap: 6px;
+        border-bottom: 3px solid #3b82f6 !important; 
+        padding-bottom: 0 !important;
+    }
+    /* Estilo de cada "orelha" da pasta */
+    [data-testid="stTabs"] button[role="tab"] {
+        background-color: #1a1c23 !important;
+        border: 1px solid #333845 !important;
+        border-bottom: none !important;
+        border-radius: 12px 12px 0 0 !important; /* Arredondado só no topo */
+        padding: 10px 24px !important;
+        margin: 0 !important;
+        opacity: 0.6;
+        color: #ffffff !important;
+        transition: all 0.3s ease !important;
+    }
+    /* Efeito ao passar o mouse */
+    [data-testid="stTabs"] button[role="tab"]:hover {
+        opacity: 0.9;
+        background-color: #262933 !important;
+    }
+    /* Quando a pasta está SELECIONADA (Ativa) */
+    [data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+        background-color: #3b82f6 !important;
+        border-color: #3b82f6 !important;
+        opacity: 1;
+        font-weight: bold !important;
+    }
+    /* Oculta a linha vermelha feia do padrão do Streamlit */
+    [data-testid="stTabs"] [data-baseweb="tab-highlight"] {
+        display: none !important;
+    }
+    /* Ajuste no container dentro da pasta */
+    [data-testid="stTabs"] [data-baseweb="tab-panel"] {
+        padding-top: 1.5rem !important;
     }
 </style>
 """, unsafe_allow_html=True)
