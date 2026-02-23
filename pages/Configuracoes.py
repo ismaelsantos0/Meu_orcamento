@@ -26,33 +26,38 @@ st.write("Personalize os dados que vão aparecer nos seus orçamentos e PDFs.")
 
 # 1. CRIA A TABELA SE ELA NÃO EXISTIR (Mágica acontecendo nos bastidores)
 def inicializar_tabela():
-    conn = get_conn()
-    with conn.cursor() as cur:
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS config_empresa (
-                id SERIAL PRIMARY KEY,
-                nome_empresa VARCHAR(255),
-                whatsapp VARCHAR(50),
-                pagamento_padrao TEXT,
-                garantia_padrao VARCHAR(100),
-                validade_dias INTEGER
-            )
-        """)
-    conn.commit()
-    conn.close()
+    try:
+        conn = get_conn()
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS config_empresa (
+                    id SERIAL PRIMARY KEY,
+                    nome_empresa VARCHAR(255),
+                    whatsapp VARCHAR(50),
+                    pagamento_padrao TEXT,
+                    garantia_padrao VARCHAR(100),
+                    validade_dias INTEGER
+                )
+            """)
+        conn.commit()
+    except Exception as e:
+        st.error(f"Erro ao inicializar tabela: {e}")
+    # SEM conn.close() AQUI!
 
 inicializar_tabela()
 
 # 2. BUSCA OS DADOS ATUAIS (Para preencher o formulário se já houver dados)
 def buscar_dados():
-    conn = get_conn()
-    with conn.cursor() as cur:
-        # Por enquanto pegamos o ID 1, pois você é o único usuário. 
-        # No futuro SaaS, aqui buscaremos pelo ID do usuário logado!
-        cur.execute("SELECT * FROM config_empresa WHERE id = 1")
-        dados = cur.fetchone()
-    conn.close()
-    return dados
+    try:
+        conn = get_conn()
+        with conn.cursor() as cur:
+            # Por enquanto pegamos o ID 1. No futuro SaaS, buscaremos pelo ID do usuário!
+            cur.execute("SELECT * FROM config_empresa WHERE id = 1")
+            dados = cur.fetchone()
+        return dados
+    except Exception as e:
+        return None
+    # SEM conn.close() AQUI!
 
 dados_atuais = buscar_dados()
 
@@ -80,23 +85,26 @@ with st.container(border=True):
         
         if salvar:
             if nome_empresa and whatsapp:
-                conn = get_conn()
-                with conn.cursor() as cur:
-                    # Se já existe (ID 1), atualiza. Se não, insere.
-                    if buscar_dados():
-                        cur.execute("""
-                            UPDATE config_empresa 
-                            SET nome_empresa=%s, whatsapp=%s, pagamento_padrao=%s, garantia_padrao=%s, validade_dias=%s 
-                            WHERE id = 1
-                        """, (nome_empresa, whatsapp, pagamento, garantia, validade))
-                    else:
-                        cur.execute("""
-                            INSERT INTO config_empresa (id, nome_empresa, whatsapp, pagamento_padrao, garantia_padrao, validade_dias)
-                            VALUES (1, %s, %s, %s, %s, %s)
-                        """, (nome_empresa, whatsapp, pagamento, garantia, validade))
-                conn.commit()
-                conn.close()
-                st.success("Configurações guardadas com sucesso!")
-                st.rerun()
+                try:
+                    conn = get_conn()
+                    with conn.cursor() as cur:
+                        # Se já existe (ID 1), atualiza. Se não, insere.
+                        if buscar_dados():
+                            cur.execute("""
+                                UPDATE config_empresa 
+                                SET nome_empresa=%s, whatsapp=%s, pagamento_padrao=%s, garantia_padrao=%s, validade_dias=%s 
+                                WHERE id = 1
+                            """, (nome_empresa, whatsapp, pagamento, garantia, validade))
+                        else:
+                            cur.execute("""
+                                INSERT INTO config_empresa (id, nome_empresa, whatsapp, pagamento_padrao, garantia_padrao, validade_dias)
+                                VALUES (1, %s, %s, %s, %s, %s)
+                            """, (nome_empresa, whatsapp, pagamento, garantia, validade))
+                    conn.commit()
+                    # SEM conn.close() AQUI TAMBÉM!
+                    st.success("Configurações guardadas com sucesso!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao guardar configurações: {e}")
             else:
                 st.warning("O Nome da Empresa e o WhatsApp são obrigatórios!")
