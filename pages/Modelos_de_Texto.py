@@ -1,5 +1,21 @@
 import streamlit as st
 from core.db import get_conn
+def inicializar_tabela_textos():
+    conn = get_conn()
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS modelos_texto (
+                id SERIAL PRIMARY KEY,
+                usuario_id INTEGER REFERENCES usuarios(id),
+                servico_tipo VARCHAR(100),
+                texto_detalhado TEXT,
+                UNIQUE(usuario_id, servico_tipo)
+            );
+        """)
+    conn.commit()
+
+# Chama a função no início da página
+inicializar_tabela_textos()
 
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
     st.stop()
