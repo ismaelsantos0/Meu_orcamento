@@ -3,9 +3,14 @@ import streamlit as st
 def apply_vero_style():
     st.markdown("""
     <style>
-        /* Esconde apenas os elementos padrão do Streamlit */
-        header {visibility: hidden;}
-        footer {visibility: hidden;}
+        /* EXTERMINA A BARRA LATERAL, NAVEGAÇÃO E O CABEÇALHO PADRÃO */
+        header {visibility: hidden !important;}
+        footer {visibility: hidden !important;}
+        
+        /* Remove a navegação automática da pasta 'pages/' e a seta de abrir */
+        [data-testid="stSidebarNav"] {display: none !important;}
+        [data-testid="collapsedControl"] {display: none !important;}
+        section[data-testid="stSidebar"] {display: none !important; width: 0px !important;}
         
         /* Fundo escuro padrão VERO */
         .stApp {
@@ -38,7 +43,7 @@ def apply_vero_style():
         }
 
         /* Caixas de Texto e Inputs Visíveis */
-        .stTextInput input, .stNumberInput input, .stSelectbox div[data-baseweb="select"] {
+        .stTextInput input, .stNumberInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea {
             background-color: #1a2235 !important;
             color: white !important;
             border: 1px solid #2d3748 !important;
