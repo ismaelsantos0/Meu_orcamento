@@ -1,150 +1,167 @@
 import streamlit as st
 import io
 import pandas as pd
-from pathlib import Path
 from datetime import datetime
 from core.db import get_conn
-from core.materials import build_materials_list, materials_text_for_whatsapp
+from core.materials import build_materials_list
 import services.registry as registry
 
-# =========================
-# 1. TRAVA DE SEGURANÇA (LACRANDO A PÁGINA)
-# =========================
+# ==========================================
+# 1. TRAVA DE SEGURANÇA E CONFIGURAÇÃO
+# ==========================================
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
     st.error("❌ Acesso negado! Por favor, faça login na página inicial.")
     st.stop()
 
-# =========================
-# 2. CONFIGURAÇÃO E ESTILO
-# =========================
-st.set_page_config(page_title="Gerar Orçamento", page_icon="🧾", layout="wide")
+st.set_page_config(page_title="Vero | Gerar Orçamento", layout="wide", initial_sidebar_state="collapsed")
 
-user_id = st.session_state.user_id # ID do inquilino logado
+user_id = st.session_state.user_id
 
+# ==========================================
+# 2. ESTILO VERO (CLEAN & DARK)
+# ==========================================
 st.markdown("""
 <style>
-    [data-testid="stVerticalBlockBorderWrapper"] {
-        background-color: #262933 !important;
-        border-radius: 12px !important;
-        border: 1px solid #333845 !important;
-        padding: 1.5rem !important;
+    header {visibility: hidden;} footer {visibility: hidden;}
+    [data-testid="stSidebar"] { display: none; }
+    
+    .stApp {
+        background: radial-gradient(circle at 50% 50%, #101a26 0%, #080d12 100%);
+        font-family: 'Poppins', sans-serif;
+        color: white;
     }
-    .stButton > button { border-radius: 8px !important; font-weight: 600 !important; }
+    
+    /* Estilização de containers e inputs para o tema escuro */
+    [data-testid="stVerticalBlockBorderWrapper"] {
+        background-color: rgba(255, 255, 255, 0.03) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        border-radius: 20px !important;
+    }
+    
+    .stButton > button {
+        background-color: #ffffff !important;
+        color: #080d12 !important;
+        border-radius: 50px !important;
+        font-weight: 800 !important;
+        transition: 0.3s;
+    }
+    
+    .stButton > button:hover {
+        transform: scale(1.02) !important;
+        background-color: #3b82f6 !important;
+        color: white !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# =========================
-# 3. FUNÇÕES AUXILIARES E BANCO
-# =========================
-def buscar_dados_empresa(conn, uid):
+# ==========================================
+# 3. FUNÇÕES DE APOIO
+# ==========================================
+def buscar_config(uid):
+    conn = get_conn()
     with conn.cursor() as cur:
         cur.execute("SELECT nome_empresa, whatsapp, pagamento_padrao, garantia_padrao, validade_dias, logo FROM config_empresa WHERE usuario_id = %s", (uid,))
-        linha = cur.fetchone()
-        if linha:
-            return {"nome": linha[0], "whatsapp": linha[1], "pagamento": linha[2], "garantia": linha[3], "validade": linha[4], "logo": linha[5]}
-    return {"nome": "Empresa", "whatsapp": "00", "pagamento": "A combinar", "garantia": "90 dias", "validade": 7, "logo": None}
+        return cur.fetchone()
 
-def brl(v: float) -> str:
-    return "R$ " + f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+def brl(v):
+    return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-def generate_pdf_bytes(quote, config_emp):
-    buffer = io.BytesIO()
-    quote_for_pdf = {
-        "logo_bytes": config_emp["logo"],
-        "empresa": config_emp["nome"], 
-        "whatsapp": config_emp["whatsapp"], 
-        "data_str": datetime.now().strftime("%d/%m/%Y"),
-        "cliente": quote.get("client_name") or "Cliente",
-        "servicos": [quote], 
-        "total": quote.get("subtotal", 0.0),
-        "pagamento": config_emp["pagamento"], 
-        "garantia": config_emp["garantia"],
-        "validade_dias": config_emp["validade"]
-    }
-    from core.pdf.summary import render_summary_pdf
-    render_summary_pdf(buffer, quote_for_pdf)
-    return buffer.getvalue()
+# Busca dados do usuário logado
+dados_user = buscar_config(user_id)
+config = {
+    "nome": dados_user[0] if dados_user else "Empresa",
+    "whatsapp": dados_user[1] if dados_user else "",
+    "pagamento": dados_user[2] if dados_user else "A combinar",
+    "garantia": dados_user[3] if dados_user else "90 dias",
+    "validade": dados_user[4] if dados_user else 7,
+    "logo": dados_user[5] if dados_user else None
+}
 
-# =========================
-# 4. CARREGAMENTO DE DADOS
-# =========================
-conn = get_conn()
-config = buscar_dados_empresa(conn, user_id)
+# Cabeçalho da Página
+col_back, col_title = st.columns([1, 4])
+with col_back:
+    if st.button("← VOLTAR"):
+        st.switch_page("app.py")
+with col_title:
+    st.markdown(f"## 📝 Orçamentos | {config['nome']}")
 
-st.title(f"🚀 Novo Orçamento | {config['nome']}")
-
-# Sidebar para dados do cliente
-with st.sidebar:
-    st.subheader("👤 Dados do Cliente")
-    c_nome = st.text_input("Nome do Cliente")
-    c_tel = st.text_input("WhatsApp")
-    st.divider()
-    if st.button("⬅️ Sair do Sistema"):
-        st.session_state.logged_in = False
-        st.rerun()
-
-# Carregar Plugins dinamicamente
-plugins = list(registry.get_plugins().values())
-plugin_by_label = {p.label: p for p in plugins}
-
-# =========================
-# 5. PASSO 1: SELEÇÃO DE SERVIÇO
-# =========================
+# ==========================================
+# 4. FORMULÁRIO DE ORÇAMENTO
+# ==========================================
 with st.container(border=True):
-    st.subheader("📁 Escolha o Serviço")
-    service_label = st.selectbox("Selecione o tipo de instalação:", list(plugin_by_label.keys()))
-    plugin = plugin_by_label[service_label]
+    c1, c2 = st.columns(2)
+    cliente = c1.text_input("Nome do Cliente", placeholder="Ex: João Silva")
+    contato = c2.text_input("WhatsApp do Cliente", placeholder="(95) 9...")
+
+# SELEÇÃO DE PLUGIN (Câmeras, Cercas, Motores)
+plugins = list(registry.get_plugins().values())
+labels = [p.label for p in plugins]
+
+with st.container(border=True):
+    st.subheader("🛠️ Serviço Principal")
+    servico_sel = st.selectbox("O que vamos instalar?", labels)
+    plugin = registry.get_plugins()[list(registry.get_plugins().keys())[labels.index(servico_sel)]]
+    
+    # Renderiza os campos específicos do plugin (ex: qtd câmeras, metros de cerca)
     inputs = plugin.render_fields()
 
-# =========================
-# 6. PASSO 2: ITENS EXTRAS (SAAS FILTER)
-# =========================
+# ITENS EXTRAS DO BANCO (FILTRADO POR USUÁRIO)
 with st.container(border=True):
     st.subheader("➕ Itens Adicionais")
+    conn = get_conn()
     with conn.cursor() as cur:
-        # Filtramos os preços para aparecerem apenas os deste usuário
         cur.execute("SELECT chave, nome, valor FROM precos WHERE usuario_id = %s ORDER BY nome", (user_id,))
-        db_items = cur.fetchall()
+        itens_db = cur.fetchall()
     
-    items_dict = {f"{r[1]} ({brl(float(r[2]))})": {"chave": r[0], "nome": r[1], "valor": float(r[2])} for r in db_items}
-    sel_extras = st.multiselect("Adicionar peças avulsas:", options=list(items_dict.keys()))
+    opcoes_extras = {f"{r[1]} ({brl(float(r[2]))})": {"chave": r[0], "nome": r[1], "valor": float(r[2])} for r in itens_db}
+    selecionados = st.multiselect("Adicionar ao orçamento:", list(opcoes_extras.keys()))
     
-    extras_to_add = []
-    if sel_extras:
-        cols = st.columns(4)
-        for i, label in enumerate(sel_extras):
-            with cols[i % 4]:
-                q = st.number_input(f"Qtd: {items_dict[label]['nome']}", min_value=1, value=1, key=f"ex_{i}")
-                extras_to_add.append({"item": items_dict[label], "qty": q})
+    extras = []
+    if selecionados:
+        cols = st.columns(3)
+        for i, item_label in enumerate(selecionados):
+            with cols[i % 3]:
+                qtd = st.number_input(f"Qtd: {opcoes_extras[item_label]['nome']}", min_value=1, value=1, key=f"extra_{i}")
+                extras.append({"info": opcoes_extras[item_label], "qtd": qtd})
 
-# =========================
-# 7. CÁLCULO E RESULTADO
-# =========================
-if st.button("🚀 CALCULAR E GERAR PROPOSTA", type="primary", use_container_width=True):
-    # Cálculo via Plugin (Câmeras, Motores, etc)
-    quote = plugin.compute(conn, inputs)
+# ==========================================
+# 5. CÁLCULO FINAL E GERAÇÃO
+# ==========================================
+if st.button("🚀 GERAR PROPOSTA FINAL", use_container_width=True):
+    # 1. Calcula base do plugin
+    proposta = plugin.compute(conn, inputs)
     
-    # Soma dos Extras
-    for ex in extras_to_add:
-        v_sub = ex["qty"] * ex["item"]["valor"]
-        quote["items"].append({"desc": f"[EXTRA] {ex['item']['nome']}", "qty": ex["qty"], "unit": ex["item"]["valor"], "sub": v_sub})
-        quote["subtotal"] += v_sub
+    # 2. Soma os extras
+    for ex in extras:
+        sub = ex["qtd"] * ex["info"]["valor"]
+        proposta["items"].append({"desc": f"[ADICIONAL] {ex['info']['nome']}", "qty": ex["qtd"], "unit": ex["info"]["valor"], "sub": sub})
+        proposta["subtotal"] += sub
     
-    quote["client_name"] = c_nome
-    quote["client_phone"] = c_tel
-    total = quote["subtotal"]
-
+    st.success(f"Orçamento calculado: {brl(proposta['subtotal'])}")
+    
+    # 3. Preparação do PDF
+    from core.pdf.summary import render_summary_pdf
+    pdf_buffer = io.BytesIO()
+    dados_pdf = {
+        "logo_bytes": config["logo"],
+        "empresa": config["nome"],
+        "whatsapp": config["whatsapp"],
+        "cliente": cliente or "Cliente",
+        "data_str": datetime.now().strftime("%d/%m/%Y"),
+        "servicos": [proposta],
+        "total": proposta["subtotal"],
+        "pagamento": config["pagamento"],
+        "garantia": config["garantia"],
+        "validade_dias": config["validade"]
+    }
+    render_summary_pdf(pdf_buffer, dados_pdf)
+    
     st.divider()
-    aba_p, aba_m = st.tabs(["📄 Proposta Cliente", "🛒 Lista de Materiais"])
-
-    with aba_p:
-        pdf_bytes = generate_pdf_bytes(quote, config)
-        st.download_button("📥 Baixar Proposta em PDF", data=pdf_bytes, file_name=f"Orcamento_{c_nome}.pdf", mime="application/pdf", type="primary")
+    col_pdf, col_wpp = st.columns(2)
+    
+    with col_pdf:
+        st.download_button("📥 BAIXAR PDF", data=pdf_buffer.getvalue(), file_name=f"Orcamento_{cliente}.pdf", mime="application/pdf", use_container_width=True)
         
-        # Texto WhatsApp
-        wpp = f"🛡️ *{config['nome']}*\nOlá {c_nome}!\nSegue proposta para *{service_label}*.\nTotal: *{brl(total)}*\nPagamento: {config['pagamento']}"
-        st.text_area("Copiar para WhatsApp", wpp, height=100)
-
-    with aba_m:
-        materiais = build_materials_list(quote)
-        st.dataframe(pd.DataFrame(materiais), use_container_width=True)
+    with col_wpp:
+        msg = f"🛡️ *{config['nome']}*\nOlá {cliente}!\nSegue o orçamento para *{servico_sel}*.\nTotal: *{brl(proposta['subtotal'])}*"
+        st.text_area("Texto para WhatsApp:", msg, height=100)
