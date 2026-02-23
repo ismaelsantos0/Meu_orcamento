@@ -83,10 +83,30 @@ with col3:
 if st.button("LOGOUT", use_container_width=True):
     st.session_state.logged_in = False
     st.rerun()
-    CREATE TABLE IF NOT EXISTS modelos_texto (
-    id SERIAL PRIMARY KEY,
-    usuario_id INTEGER REFERENCES usuarios(id),
-    servico_tipo VARCHAR(100), -- Ex: '📷 Câmeras', '⚡ Cercas'
-    texto_detalhado TEXT,
-    UNIQUE(usuario_id, servico_tipo)
-);
+# ... (mantenha o código de login e CSS anterior)
+
+# PAINEL HOME (LOGADO)
+st.markdown("<div style='text-align:center; margin-top:5vh;'><h1 style='font-size:40px; font-weight:800;'>PAINEL VERO</h1></div>", unsafe_allow_html=True)
+
+col1, col2 = st.columns(2)
+col3, col4 = st.columns(2)
+
+with col1:
+    if st.button("GERAR ORCAMENTO", use_container_width=True):
+        st.switch_page("pages/1_Gerador_de_Orcamento.py")
+
+with col2:
+    if st.button("TABELA DE PRECOS", use_container_width=True):
+        st.switch_page("pages/Tabela_de_Precos.py")
+
+with col3:
+    if st.button("TEXTOS DO PDF", use_container_width=True):
+        st.switch_page("pages/Modelos_de_Texto.py")
+
+with col4:
+    if st.button("CONFIGURACOES", use_container_width=True):
+        st.switch_page("pages/Configuracoes.py")
+
+if st.button("LOGOUT", use_container_width=True):
+    st.session_state.logged_in = False
+    st.rerun()
