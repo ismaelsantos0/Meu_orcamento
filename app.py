@@ -29,7 +29,7 @@ if not st.session_state.logged_in:
         st.markdown("<div style='text-align:center;'><h1>VERO</h1><p style='color:#3b82f6; letter-spacing:5px;'>SMART SYSTEMS</p></div>", unsafe_allow_html=True)
         with st.container(border=True):
             with st.form("login_form"):
-                email = st.text_input("Usuário")
+                email = st.text_input("Usuário", placeholder="E-mail administrador")
                 senha = st.text_input("Senha", type="password")
                 
                 submit_login = st.form_submit_button("ENTRAR NO SISTEMA", use_container_width=True)
@@ -53,7 +53,7 @@ if not st.session_state.logged_in:
 user_id = st.session_state.user_id
 conn = get_conn()
 
-# Busca as configurações. Se não existir no banco, usa os padrões da RR Smart Soluções.
+# Busca as configurações. Se não existir no banco, usa os padrões da empresa.
 with conn.cursor() as cur:
     cur.execute("SELECT nome_empresa, whatsapp, logo, pagamento_padrao, garantia_padrao, validade_dias FROM config_empresa WHERE usuario_id = %s", (user_id,))
     cfg = cur.fetchone() or ("RR Smart Soluções", "95984187832", None, "A combinar", "90 dias", 7)
@@ -199,7 +199,7 @@ with tab_precos:
                 st.info("Nenhum item cadastrado nesta categoria.")
 
 # ==========================================
-# ABA 3: MODELOS DE TEXTO
+# ABA 3: MODELOS DE TEXTO (CORRIGIDO PARA EVITAR ERRO DE DB)
 # ==========================================
 with tab_modelos:
     st.header("Modelos de Proposta PDF")
@@ -215,16 +215,21 @@ with tab_modelos:
         
         if st.button("SALVAR MODELO DE TEXTO"):
             with conn.cursor() as cur:
-                cur.execute("""
-                    INSERT INTO modelos_texto (usuario_id, servico_tipo, texto_detalhado) 
-                    VALUES (%s, %s, %s) ON CONFLICT (usuario_id, servico_tipo) 
-                    DO UPDATE SET texto_detalhado = EXCLUDED.texto_detalhado
-                """, (user_id, sel_serv, novo_txt))
+                # 1. Verifica se já existe
+                cur.execute("SELECT id FROM modelos_texto WHERE usuario_id = %s AND servico_tipo = %s", (user_id, sel_serv))
+                existe_modelo = cur.fetchone()
+                
+                if existe_modelo:
+                    # 2. Se existir, atualiza
+                    cur.execute("UPDATE modelos_texto SET texto_detalhado = %s WHERE usuario_id = %s AND servico_tipo = %s", (novo_txt, user_id, sel_serv))
+                else:
+                    # 3. Se não existir, insere
+                    cur.execute("INSERT INTO modelos_texto (usuario_id, servico_tipo, texto_detalhado) VALUES (%s, %s, %s)", (user_id, sel_serv, novo_txt))
             conn.commit()
-            st.success("Texto salvo!")
+            st.success("Texto salvo com sucesso!")
 
 # ==========================================
-# ABA 4: CONFIGURAÇÕES (CORRIGIDA COM UPSERT E LOGO)
+# ABA 4: CONFIGURAÇÕES (CORRIGIDO PARA EVITAR ERRO DE DB)
 # ==========================================
 with tab_config:
     st.header("Configurações da Empresa")
@@ -247,18 +252,25 @@ with tab_config:
             logo_bytes = logo_file.read() if logo_file else cfg[2]
             
             with conn.cursor() as cur:
-                cur.execute("""
-                    INSERT INTO config_empresa 
-                    (usuario_id, nome_empresa, whatsapp, logo, pagamento_padrao, garantia_padrao, validade_dias) 
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (usuario_id) DO UPDATE SET
-                    nome_empresa = EXCLUDED.nome_empresa,
-                    whatsapp = EXCLUDED.whatsapp,
-                    logo = EXCLUDED.logo,
-                    pagamento_padrao = EXCLUDED.pagamento_padrao,
-                    garantia_padrao = EXCLUDED.garantia_padrao,
-                    validade_dias = EXCLUDED.validade_dias
-                """, (user_id, n_emp, w_emp, logo_bytes, p_pad, g_pad, v_pad))
+                # 1. Verifica se já existe uma configuração
+                cur.execute("SELECT id FROM config_empresa WHERE usuario_id = %s", (user_id,))
+                existe_cfg = cur.fetchone()
+                
+                if existe_cfg:
+                    # 2. Se existir, faz o UPDATE
+                    cur.execute("""
+                        UPDATE config_empresa 
+                        SET nome_empresa=%s, whatsapp=%s, logo=%s, pagamento_padrao=%s, garantia_padrao=%s, validade_dias=%s 
+                        WHERE usuario_id=%s
+                    """, (n_emp, w_emp, logo_bytes, p_pad, g_pad, v_pad, user_id))
+                else:
+                    # 3. Se não existir, faz o INSERT
+                    cur.execute("""
+                        INSERT INTO config_empresa 
+                        (usuario_id, nome_empresa, whatsapp, logo, pagamento_padrao, garantia_padrao, validade_dias) 
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """, (user_id, n_emp, w_emp, logo_bytes, p_pad, g_pad, v_pad))
+                    
             conn.commit()
             st.success("Configurações atualizadas com sucesso!")
             st.rerun()
