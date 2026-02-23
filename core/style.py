@@ -14,32 +14,24 @@ def apply_vero_style():
             color: #f8fafc;
         }
 
-        /* CORREÇÃO: Remove a sobreposição de cards */
-        [data-testid="stVerticalBlock"] > div:has(div[data-testid="stVerticalBlockBorderWrapper"]) {
-            padding: 0px !important;
-            margin-bottom: 1rem !important;
-        }
-
+        /* CORREÇÃO DE SOBREPOSIÇÃO: Limpa bordas duplas */
         div[data-testid="stVerticalBlockBorderWrapper"] {
             background: rgba(255, 255, 255, 0.03) !important;
             border: 1px solid rgba(255, 255, 255, 0.1) !important;
             border-radius: 24px !important;
-            padding: 30px !important;
-            margin: 0px !important;
-            height: 100% !important;
+            padding: 25px !important;
+            margin-bottom: 10px !important;
             box-shadow: 0 4px 20px rgba(0,0,0,0.2) !important;
         }
 
-        /* Ajuste de Botões para não ficarem colados */
         .stButton > button {
-            margin-top: 15px !important;
             border-radius: 14px !important;
             height: 50px !important;
             background: #ffffff !important;
             color: #020617 !important;
             font-weight: 700 !important;
             border: none !important;
-            width: 100% !important;
+            transition: all 0.3s ease !important;
         }
 
         .stButton > button:hover {
@@ -48,10 +40,11 @@ def apply_vero_style():
             transform: translateY(-2px);
         }
 
-        /* Títulos mais limpos */
-        h1, h2, h3 {
-            margin-bottom: 1rem !important;
-            font-weight: 800 !important;
+        .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] {
+            background-color: rgba(255, 255, 255, 0.05) !important;
+            border-radius: 12px !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            color: white !important;
         }
     </style>
     """, unsafe_allow_html=True)
