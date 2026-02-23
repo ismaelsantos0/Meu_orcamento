@@ -13,30 +13,31 @@ st.set_page_config(page_title="Vero | Gerador", layout="wide", initial_sidebar_s
 user_id = st.session_state.user_id
 conn = get_conn()
 
+# Estilo Vero Premium
 st.markdown("<style>header {visibility: hidden;} footer {visibility: hidden;} [data-testid='stSidebar'] { display: none; } .stApp { background: radial-gradient(circle at 50% 50%, #101a26 0%, #080d12 100%); color: white; }</style>", unsafe_allow_html=True)
 
-if st.button("VOLTAR", key="b_gen"): st.switch_page("app.py")
+if st.button("VOLTAR", key="b_gen_back"): st.switch_page("app.py")
 
-# Configurações da Empresa
+# Busca configurações da RR Smart Soluções
 with conn.cursor() as cur:
     cur.execute("SELECT nome_empresa, whatsapp, logo, pagamento_padrao, garantia_padrao, validade_dias FROM config_empresa WHERE usuario_id = %s", (user_id,))
     cfg = cur.fetchone() or ("RR Smart Soluções", "", None, "A combinar", "90 dias", 7)
 
-st.title("Gerador de Orçamentos")
+st.title("Gerador de Orcamentos")
 
 with st.container(border=True):
     col1, col2 = st.columns(2)
     cliente = col1.text_input("Cliente")
-    contato = col2.text_input("WhatsApp Cliente")
+    contato_cliente = col2.text_input("WhatsApp Cliente")
 
 plugins = registry.get_plugins()
-servico_label = st.selectbox("Tipo de Serviço", list(p.label for p in plugins.values()))
+servico_label = st.selectbox("Tipo de Servico", list(p.label for p in plugins.values()))
 plugin = next(p for p in plugins.values() if p.label == servico_label)
 
 with st.container(border=True):
     inputs = plugin.render_fields()
 
-# Identificação da Categoria para Filtro e Texto
+# Mapeamento de Categorias
 mapeamento = {"Camera": "CFTV", "Motor": "Motor de Portão", "Cerca": "Cerca/Concertina", "Concertina": "Cerca/Concertina"}
 categoria_atual = next((v for k, v in mapeamento.items() if k in servico_label), "Geral")
 
@@ -55,28 +56,59 @@ if not df_p.empty:
                     q = st.number_input(f"Qtd: {opcoes[sel]['nome']}", min_value=1, key=f"q_{i}")
                     extras_list.append({"info": opcoes[sel], "qtd": q})
 
-if st.button("FINALIZAR E GERAR PDF", use_container_width=True, key="f_pdf"):
+if st.button("FINALIZAR E GERAR OPCOES", use_container_width=True, key="f_final"):
     res = plugin.compute(conn, inputs)
     for ex in extras_list:
         sub = ex['qtd'] * ex['info']['valor']
         res['items'].append({'desc': ex['info']['nome'], 'qty': ex['qtd'], 'unit': ex['info']['valor'], 'sub': sub})
         res['subtotal'] += sub
     
-    # BUSCA TEXTO PERSONALIZADO PARA O PDF (CHAVE summary_client)
+    # Busca Texto Personalizado para a RR Smart Soluções
     with conn.cursor() as cur:
         cur.execute("SELECT texto_detalhado FROM modelos_texto WHERE usuario_id = %s AND servico_tipo = %s", (user_id, categoria_atual))
         txt = cur.fetchone()
-        # Injeção direta para o core/pdf ler
-        res['summary_client'] = txt[0] if (txt and txt[0]) else "Instalação profissional padrão."
+        texto_detalhado = txt[0] if (txt and txt[0]) else "Instalacao profissional padrão."
+        res['summary_client'] = texto_detalhado # Alinhado com core/pdf/summary.py
 
-    from core.pdf.summary import render_summary_pdf
-    pdf_io = io.BytesIO()
-    payload = {
-        "logo_bytes": cfg[2], "empresa": cfg[0], "whatsapp": cfg[1], "cliente": cliente, 
-        "data_str": datetime.now().strftime("%d/%m/%Y"), "servicos": [res], 
-        "total": res['subtotal'], "pagamento": cfg[3], "garantia": cfg[4], "validade_dias": cfg[5]
-    }
-    render_summary_pdf(pdf_io, payload)
+    st.success(f"Orcamento pronto: R$ {res['subtotal']:.2f}")
     
-    st.success(f"Total: R$ {res['subtotal']:.2f}")
-    st.download_button("📥 BAIXAR PROPOSTA", pdf_io.getvalue(), f"Orcamento_{cliente}.pdf", "application/pdf")
+    aba_pdf, aba_zap, aba_forn = st.tabs(["📄 Proposta PDF", "📱 Texto p/ Cliente", "📦 Texto p/ Fornecedor"])
+
+    with aba_pdf:
+        from core.pdf.summary import render_summary_pdf
+        pdf_io = io.BytesIO()
+        payload = {
+            "logo_bytes": cfg[2], "empresa": cfg[0], "whatsapp": cfg[1], "cliente": cliente, 
+            "data_str": datetime.now().strftime("%d/%m/%Y"), "servicos": [res], 
+            "total": res['subtotal'], "pagamento": cfg[3], "garantia": cfg[4], "validade_dias": cfg[5]
+        }
+        render_summary_pdf(pdf_io, payload)
+        st.download_button("📥 BAIXAR PDF", pdf_io.getvalue(), f"Orcamento_{cliente}.pdf", "application/pdf")
+
+    with aba_zap:
+        # Texto formatado para WhatsApp do Cliente
+        msg_cliente = f"*ORÇAMENTO: {cfg[0]}*\n\n"
+        msg_cliente += f"Olá {cliente}! Segue proposta para seu serviço:\n\n"
+        msg_cliente += f"*Serviço:* {servico_label}\n"
+        msg_cliente += f"*Detalhes:* {texto_detalhado}\n\n"
+        msg_cliente += f"*Investimento Total: R$ {res['subtotal']:.2f}*\n"
+        msg_cliente += f"Pagamento: {cfg[3]}\n"
+        msg_cliente += f"Garantia: {cfg[4]}\n\n"
+        msg_cliente += f"Para fechar, entre em contato: {cfg[1]}"
+        
+        st.text_area("Copie para o WhatsApp do Cliente", msg_cliente, height=250)
+        st.download_button("Salvar Mensagem (.txt)", msg_cliente, f"Mensagem_Cliente_{cliente}.txt")
+
+    with aba_forn:
+        # Lista de materiais para o Fornecedor
+        materiais = build_materials_list(res)
+        msg_forn = f"*PEDIDO DE MATERIAIS - {cfg[0]}*\n\n"
+        msg_forn += f"Data: {datetime.now().strftime('%d/%m/%Y')}\n"
+        msg_forn += "----------------------------------\n"
+        for m in materiais:
+            msg_forn += f"• {m['qty']}x {m['desc']}\n"
+        msg_forn += "----------------------------------\n"
+        msg_forn += "Favor confirmar disponibilidade e valores."
+        
+        st.text_area("Copie para o Fornecedor", msg_forn, height=250)
+        st.download_button("Salvar Pedido (.txt)", msg_forn, f"Pedido_Fornecedor_{datetime.now().strftime('%d_%m')}.txt")
