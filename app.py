@@ -1,11 +1,11 @@
 import streamlit as st
-
-# 1. CONFIGURAÇÃO OBRIGATÓRIA (Força a barra a nascer fechada)
-st.set_page_config(page_title="Vero | RR Smart Soluções", layout="wide", initial_sidebar_state="collapsed")
-
 import pandas as pd
 import io
 import urllib.parse
+
+# 1. CONFIGURAÇÃO OBRIGATÓRIA (Força a barra lateral a nascer fechada)
+st.set_page_config(page_title="Vero | RR Smart Soluções", layout="wide", initial_sidebar_state="collapsed")
+
 from core.db import get_conn
 from core.style import apply_vero_style
 from core.materials import build_materials_list
@@ -14,20 +14,29 @@ import services.registry as registry
 # 2. APLICA ESTILO (Extermina a barra lateral com CSS)
 apply_vero_style()
 
-if 'logged_in' not in st.session_state: st.session_state.logged_in = False
-if 'orcamento_pronto' not in st.session_state: st.session_state.orcamento_pronto = False
+if 'logged_in' not in st.session_state: 
+    st.session_state.logged_in = False
+if 'orcamento_pronto' not in st.session_state: 
+    st.session_state.orcamento_pronto = False
 
-# 3. TELA DE LOGIN
+# ==========================================
+# 3. TELA DE LOGIN (COM FORMULÁRIO SEGURO)
+# ==========================================
 if not st.session_state.logged_in:
     st.markdown("<br><br><br>", unsafe_allow_html=True)
     _, col_login, _ = st.columns([1, 1.2, 1])
     with col_login:
         st.markdown("<div style='text-align:center;'><h1>VERO</h1><p style='color:#3b82f6; letter-spacing:5px;'>SMART SYSTEMS</p></div>", unsafe_allow_html=True)
         with st.container(border=True):
+            # Único st.form mantido para permitir o "Enter" no teclado
             with st.form("login_form"):
                 email = st.text_input("Usuário")
                 senha = st.text_input("Senha", type="password")
-                if st.form_submit_button("ENTRAR NO SISTEMA", use_container_width=True):
+                
+                # BOTÃO DE SUBMIT (PERFEITAMENTE ALINHADO DENTRO DO WITH)
+                submit_login = st.form_submit_button("ENTRAR NO SISTEMA", use_container_width=True)
+                
+                if submit_login:
                     conn = get_conn()
                     with conn.cursor() as cur:
                         cur.execute("SELECT id FROM usuarios WHERE email=%s AND senha=%s", (email, senha))
@@ -40,7 +49,9 @@ if not st.session_state.logged_in:
                         st.error("Credenciais inválidas")
     st.stop()
 
-# 4. CARREGAMENTO DE DADOS GERAIS
+# ==========================================
+# 4. CARREGAMENTO DE DADOS (ÁREA LOGADA)
+# ==========================================
 user_id = st.session_state.user_id
 conn = get_conn()
 
@@ -54,11 +65,10 @@ tab_gerador, tab_precos, tab_modelos, tab_config = st.tabs([
 ])
 
 # ==========================================
-# ABA 1: GERADOR DE ORÇAMENTOS E RESULTADOS
+# ABA 1: GERADOR DE ORÇAMENTOS
 # ==========================================
 with tab_gerador:
     if st.session_state.orcamento_pronto and 'dados_finais' in st.session_state:
-        # --- TELA DE RESULTADO ---
         d = st.session_state.dados_finais
         st.success(f"Orçamento calculado com sucesso para {d['cliente']}!")
         
@@ -93,7 +103,6 @@ with tab_gerador:
                 st.download_button("💾 BAIXAR LISTA .TXT", lista_txt, "pedido_fornecedor.txt", use_container_width=True)
 
     else:
-        # --- TELA DE FORMULÁRIO ---
         st.header("Novo Orçamento")
         with st.container(border=True):
             c1, c2 = st.columns(2)
@@ -121,6 +130,7 @@ with tab_gerador:
                     q_item = st.number_input(f"Qtd: {opcoes_dict[s_item]['nome']}", min_value=1, key=f"q_{s_item}")
                     extras_final.append({"info": opcoes_dict[s_item], "qtd": q_item})
             
+            # Botão normal (não precisa de form)
             if st.button("CALCULAR E FINALIZAR PROPOSTA", use_container_width=True):
                 if not cliente:
                     st.warning("Por favor, preencha o nome do cliente.")
@@ -152,22 +162,27 @@ with tab_gerador:
                     st.rerun()
 
 # ==========================================
-# ABA 2: TABELA DE PREÇOS
+# ABA 2: TABELA DE PREÇOS (Sem st.form para evitar bugs)
 # ==========================================
 with tab_precos:
     st.header("Gestão de Preços")
     with st.container(border=True):
-        with st.form("form_novo_item", clear_on_submit=True):
-            c_p1, c_p2, c_p3, c_p4 = st.columns([1, 2, 1, 1])
-            p_ch = c_p1.text_input("Chave (Ex: CAM_01)")
-            p_nm = c_p2.text_input("Nome Produto")
-            p_vl = c_p3.number_input("Preço R$", min_value=0.0)
-            p_ct = c_p4.selectbox("Categoria", ["CFTV", "Cerca/Concertina", "Motor de Portão", "Geral"])
-            if st.form_submit_button("CADASTRAR ITEM"):
+        c_p1, c_p2, c_p3, c_p4 = st.columns([1, 2, 1, 1])
+        p_ch = c_p1.text_input("Chave (Ex: CAM_01)", key="k_chave")
+        p_nm = c_p2.text_input("Nome Produto", key="k_nome")
+        p_vl = c_p3.number_input("Preço R$", min_value=0.0, key="k_preco")
+        p_ct = c_p4.selectbox("Categoria", ["CFTV", "Cerca/Concertina", "Motor de Portão", "Geral"], key="k_cat")
+        
+        # Botão normal em vez de form_submit_button
+        if st.button("CADASTRAR NOVO ITEM", use_container_width=True):
+            if p_ch and p_nm:
                 with conn.cursor() as cur:
                     cur.execute("INSERT INTO precos (chave, nome, valor, usuario_id, categoria) VALUES (%s,%s,%s,%s,%s)", (p_ch, p_nm, p_vl, user_id, p_ct))
                 conn.commit()
+                st.success("Item adicionado!")
                 st.rerun()
+            else:
+                st.warning("Preencha a chave e o nome do produto.")
 
     st.markdown("### Itens Cadastrados")
     sub_tabs = st.tabs(["Todos", "CFTV", "Cerca/Concertina", "Motor de Portão", "Geral"])
@@ -209,21 +224,36 @@ with tab_modelos:
                     DO UPDATE SET texto_detalhado = EXCLUDED.texto_detalhado
                 """, (user_id, sel_serv, novo_txt))
             conn.commit()
-            st.success("Texto salvo! Ele aparecerá nos próximos orçamentos desta categoria.")
+            st.success("Texto salvo!")
 
 # ==========================================
-# ABA 4: CONFIGURAÇÕES
+# ABA 4: CONFIGURAÇÕES (Sem st.form)
 # ==========================================
 with tab_config:
     st.header("Configurações da Empresa")
     with st.container(border=True):
-        with st.form("form_cfg_completo"):
-            c_e1, c_e2 = st.columns(2)
-            n_emp = c_e1.text_input("Nome da Empresa", value=cfg[0])
-            w_emp = c_e2.text_input("WhatsApp de Contato", value=cfg[1])
-            
-            c_e3, c_e4 = st.columns(2)
-            p_pad = c_e3.text_input("Pagamento Padrão", value=cfg[3])
-            g_pad = c_e4.text_input("Garantia Padrão", value=cfg[4])
-            
-            v_pad = st.number_input("Validade do Orçamento (Dias)", value=cfg[5], min_value=1)
+        c_e1, c_e2 = st.columns(2)
+        n_emp = c_e1.text_input("Nome da Empresa", value=cfg[0])
+        w_emp = c_e2.text_input("WhatsApp de Contato", value=cfg[1])
+        
+        c_e3, c_e4 = st.columns(2)
+        p_pad = c_e3.text_input("Pagamento Padrão", value=cfg[3])
+        g_pad = c_e4.text_input("Garantia Padrão", value=cfg[4])
+        
+        v_pad = st.number_input("Validade do Orçamento (Dias)", value=cfg[5], min_value=1)
+        
+        if st.button("SALVAR CONFIGURAÇÕES", use_container_width=True):
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE config_empresa 
+                    SET nome_empresa=%s, whatsapp=%s, pagamento_padrao=%s, garantia_padrao=%s, validade_dias=%s 
+                    WHERE usuario_id=%s
+                """, (n_emp, w_emp, p_pad, g_pad, v_pad, user_id))
+            conn.commit()
+            st.success("Configurações atualizadas com sucesso!")
+            st.rerun()
+                
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("🔴 SAIR DO SISTEMA", use_container_width=True):
+        st.session_state.logged_in = False
+        st.rerun()
