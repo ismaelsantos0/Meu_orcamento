@@ -95,33 +95,58 @@ def brl(v: float) -> str:
 # =========================
 st.set_page_config(page_title="Gerador de Orçamentos", page_icon="🧾", layout="wide")
 
-# CSS apenas para os Cards e Botões principais (sem a modificação chata dos radios)
 st.markdown("""
 <style>
-    /* Estilizando os Cards modernos do Bootstrap */
+    /* Estilizando os Cards modernos */
     [data-testid="stVerticalBlockBorderWrapper"] {
         background-color: #262933 !important;
         border-radius: 12px !important;
         border: 1px solid #333845 !important;
         box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2) !important;
-        padding: 1rem !important;
-        transition: all 0.3s ease-in-out !important;
-    }
-    
-    [data-testid="stVerticalBlockBorderWrapper"]:hover {
-        border-color: #3b82f6 !important;
-        box-shadow: 0 0 15px rgba(59, 130, 246, 0.15) !important;
+        padding: 1.5rem !important;
     }
 
-    /* Estilizando os botões principais de Ação */
+    /* MÁGICA: TRANSFORMA O RADIO EM PASTAS ORGANIZADORAS (TABS FÍSICAS) */
+    div[data-testid="stRadio"] > div[role="radiogroup"] {
+        flex-direction: row;
+        gap: 4px;
+        border-bottom: 3px solid #3b82f6; /* Linha azul base da pasta */
+    }
+    div[data-testid="stRadio"] > div[role="radiogroup"] > label {
+        background-color: #1a1c23 !important;
+        border: 1px solid #333845 !important;
+        border-bottom: none !important;
+        border-radius: 12px 12px 0 0 !important; /* Arredondado apenas em cima = Formato de Pasta! */
+        padding: 10px 20px !important;
+        margin-bottom: 0 !important;
+        opacity: 0.6;
+        cursor: pointer;
+    }
+    div[data-testid="stRadio"] > div[role="radiogroup"] > label:hover {
+        opacity: 0.9;
+    }
+    div[data-testid="stRadio"] > div[role="radiogroup"] > label[data-checked="true"] {
+        background-color: #3b82f6 !important; /* A pasta ativa ganha cor */
+        border-color: #3b82f6 !important;
+        opacity: 1;
+    }
+    div[data-testid="stRadio"] > div[role="radiogroup"] > label span[data-baseweb="radio"] {
+        display: none !important; /* Esconde a bolinha de seleção */
+    }
+    div[data-testid="stRadio"] > div[role="radiogroup"] > label div[dir="auto"] {
+        margin-left: 0px !important; 
+    }
+    div[data-testid="stRadio"] > div[role="radiogroup"] > label p {
+        font-weight: 600 !important;
+        color: #ffffff !important;
+        margin: 0 !important;
+        font-size: 15px !important;
+    }
+    
+    /* Botões Padrão */
     .stButton > button {
         border-radius: 8px !important;
         font-weight: 600 !important;
-        transition: all 0.3s !important;
-    }
-    .stButton > button:hover {
-        transform: translateY(-2px) !important;
-        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3) !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -131,7 +156,6 @@ ASSETS_DIR = Path(__file__).parent / "assets"
 DEFAULT_LOGO = ASSETS_DIR / "logo.png"
 
 st.title("🛡️ RR Smart Soluções | Orçamentos")
-st.write("Crie propostas comerciais profissionais em segundos.")
 
 # =========================
 # Barra Lateral (Menu)
@@ -167,24 +191,45 @@ except Exception as e:
 
 
 # =========================
-# CARD 1: Seleção Clássica do Serviço
+# CARD 1: Seleção Estilo Pastas Organizadoras
 # =========================
 with st.container(border=True):
-    st.subheader("🛠️ Qual serviço será realizado?")
+    st.subheader("📁 Qual serviço será realizado?")
 
-    # Volta o selectbox tradicional, simples e direto
-    service_label = st.selectbox("Selecione o serviço na lista abaixo:", options=list(plugin_by_label.keys()))
+    # Agrupa os serviços em categorias
+    todos_servicos = list(plugin_by_label.keys())
+    cat_cameras = [s for s in todos_servicos if "câmera" in s.lower() or "camera" in s.lower() or "cftv" in s.lower()]
+    cat_cercas = [s for s in todos_servicos if "cerca" in s.lower() or "concertina" in s.lower() or "linear" in s.lower()]
+    cat_motores = [s for s in todos_servicos if "motor" in s.lower() or "portão" in s.lower()]
+    cat_outros = [s for s in todos_servicos if s not in cat_cameras + cat_cercas + cat_motores]
+
+    categorias = {}
+    if cat_cameras: categorias["📷 Câmeras"] = cat_cameras
+    if cat_cercas: categorias["⚡ Cercas"] = cat_cercas
+    if cat_motores: categorias["🚪 Motores"] = cat_motores
+    if cat_outros: categorias["🔧 Outros"] = cat_outros
+
+    # As "Pastas" vão aparecer aqui perfeitamente alinhadas
+    cat_escolhida = st.radio("Categoria", list(categorias.keys()), horizontal=True, label_visibility="collapsed")
+
+    opcoes_servico = categorias[cat_escolhida]
+    
+    st.write("") # Espaçinho dentro da pasta
+    if len(opcoes_servico) > 1:
+        service_label = st.selectbox("Selecione a variação do serviço:", opcoes_servico)
+    else:
+        service_label = opcoes_servico[0]
+        st.info(f"Serviço selecionado: **{service_label}**")
+
     plugin = plugin_by_label[service_label]
     
-    st.caption(f"ID do Serviço: `{plugin.id}`")
     st.markdown("---")
-    
-    # Campos dinâmicos do serviço escolhido
+    # Campos dinâmicos do serviço escolhido (Aparecem "dentro" da pasta)
     inputs = plugin.render_fields()
 
 
 # =========================
-# CARD 2: Itens Extras e Adicionais
+# CARD 2: Itens Extras
 # =========================
 with st.container(border=True):
     st.subheader("➕ Itens Adicionais (Extras)")
@@ -253,16 +298,19 @@ quote["client_phone"] = cliente_tel
 quote["notes"] = obs_geral
 subtotal = float(quote.get("subtotal", 0.0))
 
+
+# =========================
+# CARD 3: RESULTADOS (TABS/PASTAS NATIVAS)
+# =========================
 st.divider()
+st.subheader("📊 Resultados do Orçamento")
 
+# Aqui usamos as Pastas (Tabs) nativas do sistema para organizar a tela final!
+aba_proposta, aba_interno, aba_materiais = st.tabs(["🧑‍💼 Proposta Cliente", "🔒 Controle Interno", "🛒 Lista de Peças"])
 
-# =========================
-# CARD 3: Resultados (Proposta Cliente)
-# =========================
-with st.container(border=True):
-    st.subheader("🧑‍💼 Proposta Comercial (Para o Cliente)")
-    st.write("Baixe o PDF com as vantagens ou copie o texto estruturado para enviar no WhatsApp.")
-    
+# --- CONTEÚDO DA PASTA 1 ---
+with aba_proposta:
+    st.write("Baixe o PDF com as vantagens ou copie o texto para enviar no WhatsApp.")
     col_pdf, col_wpp = st.columns([1, 2])
 
     with col_pdf:
@@ -270,7 +318,6 @@ with st.container(border=True):
             pdf_cliente = generate_pdf_bytes(quote, tipo="summary", logo_path=logo_path)
             st.download_button(
                 label="📄 Baixar PDF da Proposta",
-                help="Gera o PDF com serviços, vantagens e valor total.",
                 data=pdf_cliente,
                 file_name=f"Proposta_RR_Smart_{datetime.now().strftime('%Y%m%d')}.pdf",
                 mime="application/pdf",
@@ -300,32 +347,20 @@ with st.container(border=True):
         
         st.text_area("💬 Copiar para WhatsApp", wpp_texto, height=200)
 
-
-# =========================
-# CARD 4: Controle Interno
-# =========================
-with st.container(border=True):
-    st.subheader("🔒 Seu Controle Interno (Custos e Peças)")
+# --- CONTEÚDO DA PASTA 2 ---
+with aba_interno:
     st.markdown(f"**Total Calculado: {brl(subtotal)}**")
-    
+    st.write("Visão detalhada de peças e custos para o seu controle. (Não aparece para o cliente)")
     items_df = pd.DataFrame(quote.get("items", []))
     if not items_df.empty:
         st.dataframe(items_df, use_container_width=True)
     else:
-        st.warning("Nenhum item retornado pelo serviço.")
+        st.warning("Nenhum item retornado.")
 
-# =========================
-# CARD 5: Lista de Compras
-# =========================
-with st.container(border=True):
-    st.subheader("🛒 Lista de Materiais (Para Compra)")
+# --- CONTEÚDO DA PASTA 3 ---
+with aba_materiais:
     only_materials = st.checkbox("Gerar somente materiais (ignorar mão de obra)", value=True)
-
-    materials = build_materials_list(
-        quote,
-        exclude_keywords=None if only_materials else [],
-        group_same_desc=True,
-    )
+    materials = build_materials_list(quote, exclude_keywords=None if only_materials else [], group_same_desc=True)
 
     if materials:
         mats_df = pd.DataFrame(materials)
@@ -338,14 +373,8 @@ with st.container(border=True):
                 f"Data: {datetime.now().strftime('%d/%m/%Y')}",
             ],
         )
-
-        with st.expander("Copiar lista em texto"):
-            st.text_area("Lista de Peças", text_materiais, height=150)
+        
+        st.text_area("Copiar Lista (Para fornecedor)", text_materiais, height=150)
 
         csv = mats_df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "⬇️ Baixar CSV",
-            data=csv,
-            file_name=f"compras_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv"
-        )
+        st.download_button("⬇️ Baixar CSV", data=csv, file_name=f"compras.csv", mime="text/csv")
