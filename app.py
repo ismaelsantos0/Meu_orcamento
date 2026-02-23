@@ -97,7 +97,7 @@ st.set_page_config(page_title="Gerador de Orçamentos", page_icon="🧾", layout
 
 st.markdown("""
 <style>
-    /* Estilizando as caixas (Containers) para parecerem Cards modernos do Bootstrap */
+    /* Estilizando os Cards modernos do Bootstrap */
     [data-testid="stVerticalBlockBorderWrapper"] {
         background-color: #262933 !important;
         border-radius: 12px !important;
@@ -107,13 +107,12 @@ st.markdown("""
         transition: all 0.3s ease-in-out !important;
     }
     
-    /* Efeito de brilho (Hover) quando passa o mouse no Card */
     [data-testid="stVerticalBlockBorderWrapper"]:hover {
         border-color: #3b82f6 !important;
         box-shadow: 0 0 15px rgba(59, 130, 246, 0.15) !important;
     }
 
-    /* Estilizando os botões principais */
+    /* Estilizando os botões principais de Ação */
     .stButton > button {
         border-radius: 8px !important;
         font-weight: 600 !important;
@@ -122,6 +121,43 @@ st.markdown("""
     .stButton > button:hover {
         transform: translateY(-2px) !important;
         box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3) !important;
+    }
+    
+    /* MÁGICA DOS BOTÕES DE SELEÇÃO DE SERVIÇO (Radio to Pills) */
+    div[data-testid="stRadio"] > div[role="radiogroup"] {
+        gap: 15px; 
+    }
+    div[data-testid="stRadio"] > div[role="radiogroup"] > label {
+        background-color: #1a1c23 !important;
+        border: 1px solid #333845 !important;
+        padding: 12px 24px !important;
+        border-radius: 10px !important;
+        cursor: pointer;
+        transition: all 0.3s ease !important;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+    div[data-testid="stRadio"] > div[role="radiogroup"] > label span[data-baseweb="radio"] {
+        display: none !important; /* Esconde a bolinha */
+    }
+    div[data-testid="stRadio"] > div[role="radiogroup"] > label div[dir="auto"] {
+        margin-left: 0px !important; 
+    }
+    div[data-testid="stRadio"] > div[role="radiogroup"] > label:hover {
+        border-color: #3b82f6 !important;
+        transform: translateY(-2px);
+    }
+    div[data-testid="stRadio"] > div[role="radiogroup"] > label[data-checked="true"] {
+        background-color: rgba(59, 130, 246, 0.15) !important;
+        border-color: #3b82f6 !important;
+        box-shadow: 0 0 15px rgba(59, 130, 246, 0.4) !important;
+    }
+    div[data-testid="stRadio"] > div[role="radiogroup"] > label p {
+        font-weight: 600 !important;
+        color: #e2e8f0 !important;
+        margin: 0 !important;
+        font-size: 15px !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -167,13 +203,50 @@ except Exception as e:
 
 
 # =========================
-# CARD 1: Seleção e Dados do Serviço
+# CARD 1: Seleção Dinâmica do Serviço (Botões Pílula)
 # =========================
 with st.container(border=True):
-    st.subheader("🛠️ Dados do Serviço Base")
-    service_label = st.selectbox("Selecione o serviço principal", options=list(plugin_by_label.keys()))
+    st.subheader("🛠️ Qual serviço será realizado?")
+
+    # Agrupa os serviços inteligentemente
+    todos_servicos = list(plugin_by_label.keys())
+    cat_cameras = []
+    cat_cercas = []
+    cat_motores = []
+    cat_outros = []
+    
+    for s in todos_servicos:
+        sl = s.lower()
+        if "câmera" in sl or "camera" in sl or "cftv" in sl:
+            cat_cameras.append(s)
+        elif "cerca" in sl or "concertina" in sl or "linear" in sl:
+            cat_cercas.append(s)
+        elif "motor" in sl or "portão" in sl or "portao" in sl:
+            cat_motores.append(s)
+        else:
+            cat_outros.append(s)
+
+    categorias = {}
+    if cat_cameras: categorias["📷 Câmeras de Segurança"] = cat_cameras
+    if cat_cercas: categorias["⚡ Cercas e Concertinas"] = cat_cercas
+    if cat_motores: categorias["🚪 Motores de Portão"] = cat_motores
+    if cat_outros: categorias["🔧 Outros Serviços"] = cat_outros
+
+    # Escolha da Categoria Principal
+    cat_escolhida = st.radio("Selecione a Categoria:", list(categorias.keys()), horizontal=True, label_visibility="collapsed")
+
+    # Escolha do Serviço Específico
+    opcoes_servico = categorias[cat_escolhida]
+    
+    st.write("") # Espaçinho
+    if len(opcoes_servico) > 1:
+        st.write("**Selecione a variação:**")
+        service_label = st.radio("Selecione a variação:", opcoes_servico, horizontal=True, label_visibility="collapsed")
+    else:
+        service_label = opcoes_servico[0]
+        st.info(f"Serviço selecionado: **{service_label}**")
+
     plugin = plugin_by_label[service_label]
-    st.caption(f"ID do Serviço: `{plugin.id}`")
     
     st.markdown("---")
     # Campos dinâmicos do serviço escolhido
@@ -217,7 +290,7 @@ with st.container(border=True):
 # =========================
 # AÇÃO: Gerar Orçamento
 # =========================
-st.write("") # Espaço extra
+st.write("") 
 colA, colB, colC = st.columns([1, 2, 1])
 with colB:
     gerar = st.button("🚀 GERAR ORÇAMENTO COMPLETO", use_container_width=True, type="primary")
