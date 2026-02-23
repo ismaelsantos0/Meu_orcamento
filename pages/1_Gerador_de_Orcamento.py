@@ -14,7 +14,7 @@ st.set_page_config(page_title="Vero | Gerador", layout="wide", initial_sidebar_s
 user_id = st.session_state.user_id
 conn = get_conn()
 
-# --- ESTILO VERO ---
+# --- ESTILO VERO (SEM EMOJIS) ---
 st.markdown("""
 <style>
     header {visibility: hidden;} footer {visibility: hidden;}
@@ -31,7 +31,7 @@ if st.button("VOLTAR", key="back_gen"):
 # Busca configurações da empresa
 with conn.cursor() as cur:
     cur.execute("SELECT nome_empresa, whatsapp, logo, pagamento_padrao, garantia_padrao, validade_dias FROM config_empresa WHERE usuario_id = %s", (user_id,))
-    cfg = cur.fetchone() or ("Vero", "", None, "A combinar", "90 dias", 7)
+    cfg = cur.fetchone() or ("RR Smart Soluções", "", None, "A combinar", "90 dias", 7)
 
 st.title("Gerador de Orcamentos")
 
@@ -49,8 +49,8 @@ plugin = next(p for p in plugins.values() if p.label == servico_label)
 with st.container(border=True):
     inputs = plugin.render_fields()
 
-# --- NOVO MAPEAMENTO DE CATEGORIAS (AJUSTADO À SUA IMAGEM) ---
-# Aqui fazemos a ponte entre o nome do serviço e o que está na sua coluna 'categoria'
+# --- MAPEAMENTO DE CATEGORIAS (SINCRONIZADO COM SUA TABELA) ---
+# O sistema identifica qual categoria buscar no banco baseado no plugin escolhido
 mapeamento = {
     "Camera": "CFTV",
     "Motor": "Motor de Portão",
@@ -70,7 +70,7 @@ extras_selecionados = []
 with st.container(border=True):
     st.subheader(f"Itens Adicionais para {categoria_atual}")
     
-    # Busca itens da categoria do serviço OU itens definidos como 'Geral'
+    # Busca apenas itens que pertencem ao serviço selecionado ou são de uso 'Geral'
     df_p = pd.read_sql("""
         SELECT chave, nome, valor FROM precos 
         WHERE usuario_id = %s AND (categoria = %s OR categoria = 'Geral')
@@ -78,7 +78,7 @@ with st.container(border=True):
     
     if not df_p.empty:
         opcoes = {f"{r['nome']} (R$ {r['valor']:.2f})": r for _, r in df_p.iterrows()}
-        selecionados = st.multiselect("Adicionar pecas avulsas", list(opcoes.keys()))
+        selecionados = st.multiselect("Adicionar pecas e acessorios", list(opcoes.keys()))
         
         if selecionados:
             cols = st.columns(3)
@@ -87,27 +87,28 @@ with st.container(border=True):
                     qtd = st.number_input(f"Qtd: {opcoes[sel]['nome']}", min_value=1, value=1, key=f"ex_{i}")
                     extras_selecionados.append({"info": opcoes[sel], "qtd": qtd})
     else:
-        st.info(f"Nenhum item adicional cadastrado para {categoria_atual}.")
+        st.info(f"Nenhum item adicional cadastrado na categoria {categoria_atual}.")
 
-# --- FINALIZAÇÃO ---
+# --- FINALIZAÇÃO E PDF ---
 if st.button("FINALIZAR", use_container_width=True, key="f_btn"):
     res = plugin.compute(conn, inputs)
     
+    # Adiciona os itens extras selecionados ao cálculo
     for ex in extras_selecionados:
         sub = ex['qtd'] * ex['info']['valor']
         res['items'].append({'desc': ex['info']['nome'], 'qty': ex['qtd'], 'unit': ex['info']['valor'], 'sub': sub})
         res['subtotal'] += sub
     
-    # Busca texto do PDF
+    # Busca o texto detalhado para o PDF
     with conn.cursor() as cur:
         cur.execute("SELECT texto_detalhado FROM modelos_texto WHERE usuario_id = %s AND servico_tipo = %s", (user_id, categoria_atual))
         txt = cur.fetchone()
         res['entrega_detalhada'] = txt[0] if txt else "Instalacao padrao realizada pela equipe RR Smart Solucoes."
 
-    st.success(f"Total: R$ {res['subtotal']:.2f}")
+    st.success(f"Orcamento finalizado: R$ {res['subtotal']:.2f}")
     
     st.divider()
-    aba_pdf, aba_mat = st.tabs(["PDF", "Materiais"])
+    aba_pdf, aba_mat = st.tabs(["Proposta PDF", "Lista Tecnica"])
     
     with aba_pdf:
         from core.pdf.summary import render_summary_pdf
@@ -118,7 +119,8 @@ if st.button("FINALIZAR", use_container_width=True, key="f_btn"):
             "pagamento": cfg[3], "garantia": cfg[4], "validade_dias": cfg[5],
             "detalhamento_entrega": res['entrega_detalhada']
         })
-        st.download_button("Baixar Proposta", pdf_io.getvalue(), f"Orcamento_{cliente}.pdf", "application/pdf")
+        st.download_button("Baixar Proposta PDF", pdf_io.getvalue(), f"Orcamento_{cliente}.pdf", "application/pdf")
     
     with aba_mat:
+        # Exibe a lista de materiais para conferência de estoque da RR Smart Soluções
         st.table(pd.DataFrame(build_materials_list(res)))
