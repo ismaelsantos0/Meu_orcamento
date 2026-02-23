@@ -11,7 +11,6 @@ import streamlit as st
 from core.materials import build_materials_list, materials_text_for_whatsapp
 from core.db import get_conn
 
-
 # =========================
 # Registry de serviços (plugins)
 # =========================
@@ -38,10 +37,6 @@ def load_plugins():
 # PDF - Wrapper Atualizado
 # =========================
 def generate_pdf_bytes(single_quote: dict, tipo: str = "summary", logo_path: str | None = None) -> bytes:
-    """
-    Gera o PDF. Focado agora na proposta comercial e recuperando textos ricos.
-    """
-    # Resgata a descrição rica, itens inclusos e vantagens!
     if "summary_full" not in single_quote:
         desc = single_quote.get("service_description", {})
         if isinstance(desc, dict):
@@ -96,25 +91,61 @@ def brl(v: float) -> str:
 
 
 # =========================
-# Streamlit App Principal
+# Configuração da Página e CSS Mágico
 # =========================
 st.set_page_config(page_title="Gerador de Orçamentos", page_icon="🧾", layout="wide")
+
+st.markdown("""
+<style>
+    /* Estilizando as caixas (Containers) para parecerem Cards modernos do Bootstrap */
+    [data-testid="stVerticalBlockBorderWrapper"] {
+        background-color: #262933 !important;
+        border-radius: 12px !important;
+        border: 1px solid #333845 !important;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2) !important;
+        padding: 1rem !important;
+        transition: all 0.3s ease-in-out !important;
+    }
+    
+    /* Efeito de brilho (Hover) quando passa o mouse no Card */
+    [data-testid="stVerticalBlockBorderWrapper"]:hover {
+        border-color: #3b82f6 !important;
+        box-shadow: 0 0 15px rgba(59, 130, 246, 0.15) !important;
+    }
+
+    /* Estilizando os botões principais */
+    .stButton > button {
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        transition: all 0.3s !important;
+    }
+    .stButton > button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3) !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 
 ASSETS_DIR = Path(__file__).parent / "assets"
 DEFAULT_LOGO = ASSETS_DIR / "logo.png"
 
-st.title("🧾 Gerador de Orçamentos")
+st.title("🛡️ RR Smart Soluções | Orçamentos")
+st.write("Crie propostas comerciais profissionais em segundos.")
 
+# =========================
+# Barra Lateral (Menu)
+# =========================
 with st.sidebar:
-    st.header("Configurações")
+    st.header("⚙️ Configurações")
     usar_logo = st.checkbox("Usar logo no PDF", value=DEFAULT_LOGO.exists())
     logo_path = str(DEFAULT_LOGO) if usar_logo and DEFAULT_LOGO.exists() else None
 
     st.divider()
-    st.subheader("Dados do cliente (opcional)")
-    cliente_nome = st.text_input("Nome do cliente", value="")
-    cliente_tel = st.text_input("Telefone/WhatsApp do cliente", value="")
-    obs_geral = st.text_area("Observações gerais", value="", height=90)
+    st.subheader("👤 Dados do Cliente")
+    cliente_nome = st.text_input("Nome do cliente", value="", placeholder="Ex: João Silva")
+    cliente_tel = st.text_input("WhatsApp do cliente", value="", placeholder="(00) 00000-0000")
+    obs_geral = st.text_area("Observações (Internas)", value="", height=90)
 
 try:
     plugins = load_plugins()
@@ -123,14 +154,10 @@ except Exception as e:
     st.stop()
 
 if not plugins:
-    st.error("Nenhum serviço (plugin) encontrado em services/registry.py")
+    st.error("Nenhum serviço (plugin) encontrado.")
     st.stop()
 
 plugin_by_label = {p.label: p for p in plugins}
-service_label = st.selectbox("Selecione o serviço", options=list(plugin_by_label.keys()))
-plugin = plugin_by_label[service_label]
-
-st.caption(f"Serviço selecionado: **{plugin.label}** • ID: `{plugin.id}`")
 
 try:
     conn = get_conn()
@@ -138,54 +165,71 @@ except Exception as e:
     st.error(f"Falha ao conectar no banco de dados: {e}")
     st.stop()
 
-st.subheader("Dados do serviço")
-inputs = plugin.render_fields()
 
-st.divider()
-st.subheader("➕ Itens e Serviços Adicionais (Opcional)")
-st.write("Selecione sensores, cabos extras, ou qualquer outro item avulso para somar neste orçamento.")
-
-extras_to_add = []
-try:
-    with conn.cursor() as cur:
-        cur.execute("SELECT chave, nome, valor FROM precos ORDER BY nome")
-        db_items = cur.fetchall()
-        
-    items_dict = {}
-    for row in db_items:
-        chave = row[0]
-        nome = row[1] if row[1] else chave.replace("_", " ").title()
-        valor = float(row[2])
-        label = f"{nome} (R$ {valor:.2f})"
-        items_dict[label] = {"chave": chave, "nome": nome, "valor": valor}
-        
-    selected_extra_labels = st.multiselect("Selecione os itens extras", options=list(items_dict.keys()), placeholder="Buscar...")
+# =========================
+# CARD 1: Seleção e Dados do Serviço
+# =========================
+with st.container(border=True):
+    st.subheader("🛠️ Dados do Serviço Base")
+    service_label = st.selectbox("Selecione o serviço principal", options=list(plugin_by_label.keys()))
+    plugin = plugin_by_label[service_label]
+    st.caption(f"ID do Serviço: `{plugin.id}`")
     
-    if selected_extra_labels:
-        cols = st.columns(min(len(selected_extra_labels), 4))
-        for i, label in enumerate(selected_extra_labels):
-            with cols[i % 4]:
-                qty = st.number_input(f"Qtd: {items_dict[label]['nome']}", min_value=1, value=1, step=1, key=f"extra_qty_{items_dict[label]['chave']}")
-                extras_to_add.append({"item": items_dict[label], "qty": qty})
+    st.markdown("---")
+    # Campos dinâmicos do serviço escolhido
+    inputs = plugin.render_fields()
 
-except Exception as e:
-    st.error(f"Erro ao carregar itens extras: {e}")
 
-st.divider()
+# =========================
+# CARD 2: Itens Extras e Adicionais
+# =========================
+with st.container(border=True):
+    st.subheader("➕ Itens Adicionais (Extras)")
+    st.write("Selecione sensores, cabos extras, ou peças avulsas para somar neste orçamento.")
 
-colA, colB = st.columns([1, 2])
-with colA:
-    gerar = st.button("✅ Gerar orçamento", use_container_width=True, type="primary")
+    extras_to_add = []
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT chave, nome, valor FROM precos ORDER BY nome")
+            db_items = cur.fetchall()
+            
+        items_dict = {}
+        for row in db_items:
+            chave = row[0]
+            nome = row[1] if row[1] else chave.replace("_", " ").title()
+            valor = float(row[2])
+            label = f"{nome} (R$ {valor:.2f})"
+            items_dict[label] = {"chave": chave, "nome": nome, "valor": valor}
+            
+        selected_extra_labels = st.multiselect("Selecione os itens extras", options=list(items_dict.keys()), placeholder="Clique para buscar...")
+        
+        if selected_extra_labels:
+            cols = st.columns(min(len(selected_extra_labels), 4))
+            for i, label in enumerate(selected_extra_labels):
+                with cols[i % 4]:
+                    qty = st.number_input(f"Qtd: {items_dict[label]['nome']}", min_value=1, value=1, step=1, key=f"extra_qty_{items_dict[label]['chave']}")
+                    extras_to_add.append({"item": items_dict[label], "qty": qty})
+
+    except Exception as e:
+        st.error(f"Erro ao carregar itens extras: {e}")
+
+
+# =========================
+# AÇÃO: Gerar Orçamento
+# =========================
+st.write("") # Espaço extra
+colA, colB, colC = st.columns([1, 2, 1])
 with colB:
-    st.info("Preencha os dados acima e clique em Gerar orçamento.")
+    gerar = st.button("🚀 GERAR ORÇAMENTO COMPLETO", use_container_width=True, type="primary")
 
 if not gerar:
     st.stop()
 
+# ----- Processamento dos Cálculos -----
 try:
     quote = plugin.compute(conn, inputs)
 except Exception as e:
-    st.error(f"Erro ao calcular itens do orçamento. Verifique os preços no banco: {e}")
+    st.error(f"Erro ao calcular itens do orçamento: {e}")
     st.stop()
 
 if extras_to_add:
@@ -198,110 +242,107 @@ if extras_to_add:
         quote["subtotal"] += sub
         
     qtd_extras = len(extras_to_add)
-    # Atualiza o summary_client com os itens adicionais antes de gerar o texto do WhatsApp
     if "summary_client" in quote:
         quote["summary_client"] += f"\n\nItens Adicionais Selecionados:\n• {qtd_extras} tipo(s) de item(ns) extra(s) incluso(s)."
 
 quote["client_name"] = cliente_nome
 quote["client_phone"] = cliente_tel
 quote["notes"] = obs_geral
-
-# =========================
-# CONTROLE INTERNO (TELA)
-# =========================
-st.subheader("Seu Controle Interno (Custos e Quantidades)")
-st.write("Estes dados são apenas para você conferir a matemática do serviço. Eles não aparecem no PDF.")
-items_df = pd.DataFrame(quote.get("items", []))
-if not items_df.empty:
-    st.dataframe(items_df, use_container_width=True)
-else:
-    st.warning("Nenhum item retornado pelo serviço.")
-
 subtotal = float(quote.get("subtotal", 0.0))
-st.markdown(f"### Total Calculado: **{brl(subtotal)}**")
 
-# =========================
-# PDF E TEXTO WPP - MODO CLIENTE
-# =========================
 st.divider()
-st.subheader("📄 Proposta Comercial (Para o Cliente)")
-st.write("Use o botão abaixo para baixar o PDF ou copie o texto para enviar no WhatsApp.")
 
-col_pdf, col_wpp = st.columns([1, 2])
 
-with col_pdf:
-    try:
-        pdf_cliente = generate_pdf_bytes(quote, tipo="summary", logo_path=logo_path)
-        st.download_button(
-            label="🧑‍💼 Baixar Proposta em PDF",
-            help="Gera o PDF com serviços, vantagens e valor total.",
-            data=pdf_cliente,
-            file_name=f"Proposta_{plugin.id}_{datetime.now().strftime('%Y%m%d')}.pdf",
-            mime="application/pdf",
-            use_container_width=True,
-            type="primary" 
-        )
-    except Exception as e:
-        st.error(f"Erro ao gerar PDF do Cliente: {e}")
+# =========================
+# CARD 3: Resultados (Proposta Cliente)
+# =========================
+with st.container(border=True):
+    st.subheader("🧑‍💼 Proposta Comercial (Para o Cliente)")
+    st.write("Baixe o PDF com as vantagens ou copie o texto estruturado para enviar no WhatsApp.")
+    
+    col_pdf, col_wpp = st.columns([1, 2])
 
-with col_wpp:
-    # Formata o texto para o WhatsApp usando * para negrito
-    wpp_texto = f"🛡️ *RR Smart Soluções*\n\n"
-    if cliente_nome:
-        wpp_texto += f"Olá, *{cliente_nome}*! Segue a nossa proposta comercial:\n\n"
+    with col_pdf:
+        try:
+            pdf_cliente = generate_pdf_bytes(quote, tipo="summary", logo_path=logo_path)
+            st.download_button(
+                label="📄 Baixar PDF da Proposta",
+                help="Gera o PDF com serviços, vantagens e valor total.",
+                data=pdf_cliente,
+                file_name=f"Proposta_RR_Smart_{datetime.now().strftime('%Y%m%d')}.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+                type="primary" 
+            )
+        except Exception as e:
+            st.error(f"Erro ao gerar PDF do Cliente: {e}")
+
+    with col_wpp:
+        wpp_texto = f"🛡️ *RR Smart Soluções*\n\n"
+        if cliente_nome:
+            wpp_texto += f"Olá, *{cliente_nome}*! Segue a nossa proposta comercial:\n\n"
+        else:
+            wpp_texto += "Olá! Segue a nossa proposta comercial:\n\n"
+
+        wpp_texto += f"🛠️ *Serviço:* {quote.get('service_name', '')}\n"
+        desc_wpp = quote.get("summary_client", quote.get("summary_full", ""))
+        if desc_wpp:
+            wpp_texto += f"{desc_wpp}\n\n"
+
+        wpp_texto += f"💰 *Investimento Total: {brl(subtotal)}*\n\n"
+        wpp_texto += f"💳 *Condições de Pagamento:*\nÀ vista ou 50% entrada / 50% na entrega\n\n"
+        wpp_texto += f"⚙️ *Garantia:* 90 dias\n"
+        wpp_texto += f"⏳ *Validade:* 7 dias\n\n"
+        wpp_texto += "Qualquer dúvida, estou à disposição para fecharmos o serviço! 🤝"
+        
+        st.text_area("💬 Copiar para WhatsApp", wpp_texto, height=200)
+
+
+# =========================
+# CARD 4: Controle Interno
+# =========================
+with st.container(border=True):
+    st.subheader("🔒 Seu Controle Interno (Custos e Peças)")
+    st.markdown(f"**Total Calculado: {brl(subtotal)}**")
+    
+    items_df = pd.DataFrame(quote.get("items", []))
+    if not items_df.empty:
+        st.dataframe(items_df, use_container_width=True)
     else:
-        wpp_texto += "Olá! Segue a nossa proposta comercial:\n\n"
-
-    wpp_texto += f"🛠️ *Serviço:* {quote.get('service_name', '')}\n"
-    
-    # Pega o texto gerado (que já contém inclusos e vantagens, se existirem)
-    desc_wpp = quote.get("summary_client", quote.get("summary_full", ""))
-    if desc_wpp:
-        wpp_texto += f"{desc_wpp}\n\n"
-
-    wpp_texto += f"💰 *Investimento Total: {brl(subtotal)}*\n\n"
-    wpp_texto += f"💳 *Condições de Pagamento:*\nÀ vista ou 50% entrada / 50% na entrega\n\n"
-    wpp_texto += f"⚙️ *Garantia:* 90 dias\n"
-    wpp_texto += f"⏳ *Validade do Orçamento:* 7 dias\n\n"
-    wpp_texto += "Qualquer dúvida, estou à disposição para fecharmos o serviço! 🤝"
-    
-    st.text_area("💬 Copiar para WhatsApp", wpp_texto, height=250)
-
+        st.warning("Nenhum item retornado pelo serviço.")
 
 # =========================
-# Lista de Materiais
+# CARD 5: Lista de Compras
 # =========================
-st.divider()
-st.subheader("🧾 Lista de Materiais (para compra)")
+with st.container(border=True):
+    st.subheader("🛒 Lista de Materiais (Para Compra)")
+    only_materials = st.checkbox("Gerar somente materiais (ignorar mão de obra)", value=True)
 
-only_materials = st.checkbox("Gerar somente materiais (sem mão de obra)", value=True)
-
-materials = build_materials_list(
-    quote,
-    exclude_keywords=None if only_materials else [],
-    group_same_desc=True,
-)
-
-if materials:
-    mats_df = pd.DataFrame(materials)
-    st.dataframe(mats_df, use_container_width=True)
-
-    text_materiais = materials_text_for_whatsapp(
-        materials,
-        header_lines=[
-            f"Serviço: {quote.get('service_name', '')}",
-            f"Cliente: {cliente_nome}" if cliente_nome else "Cliente: (não informado)",
-            f"Data: {datetime.now().strftime('%d/%m/%Y')}",
-        ],
+    materials = build_materials_list(
+        quote,
+        exclude_keywords=None if only_materials else [],
+        group_same_desc=True,
     )
 
-    st.text_area("Lista de Peças (copiar/colar)", text_materiais, height=220)
+    if materials:
+        mats_df = pd.DataFrame(materials)
+        st.dataframe(mats_df, use_container_width=True)
 
-    csv = mats_df.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        "⬇️ Baixar CSV da lista de materiais",
-        data=csv,
-        file_name=f"lista_materiais_{plugin.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-        mime="text/csv",
-        use_container_width=True,
-    )
+        text_materiais = materials_text_for_whatsapp(
+            materials,
+            header_lines=[
+                f"Serviço: {quote.get('service_name', '')}",
+                f"Data: {datetime.now().strftime('%d/%m/%Y')}",
+            ],
+        )
+
+        with st.expander("Copiar lista em texto"):
+            st.text_area("Lista de Peças", text_materiais, height=150)
+
+        csv = mats_df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "⬇️ Baixar CSV",
+            data=csv,
+            file_name=f"compras_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            mime="text/csv"
+        )
