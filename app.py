@@ -83,3 +83,10 @@ with col3:
 if st.button("LOGOUT", use_container_width=True):
     st.session_state.logged_in = False
     st.rerun()
+    CREATE TABLE IF NOT EXISTS modelos_texto (
+    id SERIAL PRIMARY KEY,
+    usuario_id INTEGER REFERENCES usuarios(id),
+    servico_tipo VARCHAR(100), -- Ex: '📷 Câmeras', '⚡ Cercas'
+    texto_detalhado TEXT,
+    UNIQUE(usuario_id, servico_tipo)
+);
