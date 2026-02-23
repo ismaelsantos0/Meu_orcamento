@@ -1,63 +1,79 @@
 import streamlit as st
-import io
-from datetime import datetime
 from core.db import get_conn
-import services.registry as registry
 
-st.set_page_config(page_title="Portal SaaS", page_icon="🛡️", layout="wide")
+# 1. Configuração da página (DEVE ser a primeira linha)
+st.set_page_config(page_title="Login | RR Smart Pro", page_icon="🛡️", layout="wide", initial_sidebar_state="collapsed")
 
-# --- ESTILO ---
+# 2. CSS para "Limpar" a tela e criar o efeito visual Premium
 st.markdown("""
 <style>
-    [data-testid="stVerticalBlockBorderWrapper"] { background-color: #262933 !important; border-radius: 12px !important; padding: 1.5rem !important; }
-    .stButton > button { border-radius: 8px !important; }
+    /* Esconde o menu lateral na tela de login */
+    [data-testid="stSidebar"] { display: none; }
+    
+    .stApp {
+        background: radial-gradient(circle at top right, #1e293b, #0f172a);
+    }
+
+    .login-card {
+        background: rgba(30, 41, 59, 0.7);
+        backdrop-filter: blur(15px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 28px;
+        padding: 50px;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+        margin-top: 10% !important;
+    }
+    
+    .stButton > button {
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+        border: none !important;
+        border-radius: 12px !important;
+        font-weight: 700 !important;
+        padding: 14px !important;
+        text-transform: uppercase;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# --- LOGIN ---
+# 3. Lógica de Login
+def validar_login(email, senha):
+    try:
+        conn = get_conn()
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, email FROM usuarios WHERE email = %s AND senha = %s", (email, senha))
+            return cur.fetchone()
+    except:
+        return None
+
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 
+# --- TELA DE LOGIN ---
 if not st.session_state.logged_in:
-    col1, col2, col3 = st.columns([1, 1.5, 1])
-    with col2:
-        with st.container(border=True):
-            st.title("🛡️ Login")
-            email = st.text_input("E-mail")
-            senha = st.text_input("Senha", type="password")
-            if st.button("Aceder Sistema", use_container_width=True, type="primary"):
-                conn = get_conn()
-                with conn.cursor() as cur:
-                    cur.execute("SELECT id, email FROM usuarios WHERE email = %s AND senha = %s", (email, senha))
-                    user = cur.fetchone()
+    e1, col_login, e2 = st.columns([1, 1.2, 1])
+    with col_login:
+        st.markdown('<div class="login-card">', unsafe_allow_html=True)
+        st.markdown("<h1 style='text-align: center; color: white;'>🛡️ RR Smart Pro</h1>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #94a3b8;'>Acesse sua plataforma de orçamentos</p>", unsafe_allow_html=True)
+        
+        with st.form("login_form"):
+            email_input = st.text_input("E-mail")
+            senha_input = st.text_input("Senha", type="password")
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.form_submit_button("ENTRAR NO SISTEMA", use_container_width=True):
+                user = validar_login(email_input, senha_input)
                 if user:
                     st.session_state.logged_in = True
                     st.session_state.user_id = user[0]
+                    st.session_state.user_email = user[1]
                     st.rerun()
                 else:
                     st.error("Credenciais inválidas.")
+        st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
-# --- SISTEMA LOGADO ---
-user_id = st.session_state.user_id
-conn = get_conn()
-
-# Busca Configuração do Usuário
-with conn.cursor() as cur:
-    cur.execute("SELECT nome_empresa, whatsapp, logo FROM config_empresa WHERE usuario_id = %s", (user_id,))
-    config = cur.fetchone()
-
-nome_empresa = config[0] if config else "Minha Empresa"
-whatsapp_emp = config[1] if config else ""
-
-with st.sidebar:
-    st.title(f"🏢 {nome_empresa}")
-    if st.button("Sair"):
-        st.session_state.logged_in = False
-        st.rerun()
-
-st.title(f"🚀 Orçamentos Inteligentes")
-
-# Aqui você continua com a lógica de Plugins e Geração de PDF 
-# que já tínhamos, sempre passando o user_id nas consultas de PRECOS.
-st.info(f"Bem-vindo de volta! Seu ID de assinante é: {user_id}")
+# --- REDIRECIONAMENTO APÓS LOGIN ---
+# Se o usuário logar, mostramos uma tela de boas-vindas simples ou instruções
+st.markdown("""<style>[data-testid="stSidebar"] { display: block !important; }</style>""", unsafe_allow_html=True)
+st.title(f"Seja bem-vindo, {st.session_state.user_email}!")
+st.info("👈 Use o menu ao lado para acessar as ferramentas do sistema.")
