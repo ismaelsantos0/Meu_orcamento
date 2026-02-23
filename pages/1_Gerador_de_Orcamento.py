@@ -25,7 +25,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-if st.button("VOLTAR", key="b_gen"): 
+if st.button("VOLTAR", key="back_gen"): 
     st.switch_page("app.py")
 
 # Busca configurações da empresa
@@ -49,15 +49,28 @@ plugin = next(p for p in plugins.values() if p.label == servico_label)
 with st.container(border=True):
     inputs = plugin.render_fields()
 
-# --- FILTRO DE CATEGORIA ---
-mapeamento = {"Concertina": "Concertinas", "Cerca": "Cercas", "Camera": "Cameras", "Motor": "Motores"}
-categoria_atual = next((v for k, v in mapeamento.items() if k in servico_label), "Geral")
+# --- NOVO MAPEAMENTO DE CATEGORIAS (AJUSTADO À SUA IMAGEM) ---
+# Aqui fazemos a ponte entre o nome do serviço e o que está na sua coluna 'categoria'
+mapeamento = {
+    "Camera": "CFTV",
+    "Motor": "Motor de Portão",
+    "Cerca": "Cerca/Concertina",
+    "Concertina": "Cerca/Concertina"
+}
 
-# --- ITENS ADICIONAIS (CORREÇÃO DO NAMEERROR) ---
-extras_selecionados = [] # Inicializa a variável para evitar o NameError
+categoria_atual = "Geral"
+for termo, cat_banco in mapeamento.items():
+    if termo in servico_label:
+        categoria_atual = cat_banco
+        break
+
+# --- ITENS ADICIONAIS FILTRADOS ---
+extras_selecionados = []
 
 with st.container(border=True):
-    st.subheader(f"Itens Adicionais ({categoria_atual})")
+    st.subheader(f"Itens Adicionais para {categoria_atual}")
+    
+    # Busca itens da categoria do serviço OU itens definidos como 'Geral'
     df_p = pd.read_sql("""
         SELECT chave, nome, valor FROM precos 
         WHERE usuario_id = %s AND (categoria = %s OR categoria = 'Geral')
@@ -74,26 +87,24 @@ with st.container(border=True):
                     qtd = st.number_input(f"Qtd: {opcoes[sel]['nome']}", min_value=1, value=1, key=f"ex_{i}")
                     extras_selecionados.append({"info": opcoes[sel], "qtd": qtd})
     else:
-        st.info("Nenhum item adicional nesta categoria.")
+        st.info(f"Nenhum item adicional cadastrado para {categoria_atual}.")
 
 # --- FINALIZAÇÃO ---
 if st.button("FINALIZAR", use_container_width=True, key="f_btn"):
-    # 1. Calculo do Plugin
     res = plugin.compute(conn, inputs)
     
-    # 2. Soma dos Extras (Agora a variável sempre existe)
     for ex in extras_selecionados:
         sub = ex['qtd'] * ex['info']['valor']
         res['items'].append({'desc': ex['info']['nome'], 'qty': ex['qtd'], 'unit': ex['info']['valor'], 'sub': sub})
         res['subtotal'] += sub
     
-    # 3. Texto do PDF
+    # Busca texto do PDF
     with conn.cursor() as cur:
         cur.execute("SELECT texto_detalhado FROM modelos_texto WHERE usuario_id = %s AND servico_tipo = %s", (user_id, categoria_atual))
         txt = cur.fetchone()
         res['entrega_detalhada'] = txt[0] if txt else "Instalacao padrao realizada pela equipe RR Smart Solucoes."
 
-    st.success(f"Orcamento finalizado: R$ {res['subtotal']:.2f}")
+    st.success(f"Total: R$ {res['subtotal']:.2f}")
     
     st.divider()
     aba_pdf, aba_mat = st.tabs(["PDF", "Materiais"])
