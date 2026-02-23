@@ -1,52 +1,39 @@
 import streamlit as st
 from core.db import get_conn
 
-# Configuração da página - Inicia sem menu lateral
 st.set_page_config(page_title="Vero | Smart Systems", layout="wide", initial_sidebar_state="collapsed")
 
-# Estilo Universal Vero (Fundo Escuro e Tipografia Moderna)
 st.markdown("""
 <style>
     header {visibility: hidden;} footer {visibility: hidden;}
     [data-testid="stSidebar"] { display: none; }
     @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800&display=swap');
-    
     .stApp {
         background: radial-gradient(circle at 50% 50%, #101a26 0%, #080d12 100%);
         font-family: 'Poppins', sans-serif;
         color: white;
     }
-    
-    .stTextInput > div > div {
+    .stTextInput > div > div > input {
         background: rgba(255, 255, 255, 0.05) !important;
         border: 1px solid rgba(255, 255, 255, 0.1) !important;
         border-radius: 50px !important;
-        padding: 8px 25px !important;
         color: white !important;
+        padding: 10px 20px !important;
     }
-    
     .stButton > button {
         background-color: #ffffff !important;
         color: #080d12 !important;
         border-radius: 50px !important;
         font-weight: 800 !important;
         border: none !important;
-        transition: all 0.3s ease !important;
+        height: 50px;
     }
-    
-    .stButton > button:hover {
-        transform: scale(1.05) !important;
-        background-color: #3b82f6 !important;
-        color: white !important;
-    }
-
     .option-card {
         background: rgba(255, 255, 255, 0.03);
         border: 1px solid rgba(255, 255, 255, 0.1);
         border-radius: 20px;
         padding: 20px;
         text-align: center;
-        margin-bottom: 10px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -54,7 +41,6 @@ st.markdown("""
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 
-# --- TELA DE LOGIN ---
 if not st.session_state.logged_in:
     _, col_login, _ = st.columns([1, 1, 1])
     with col_login:
@@ -75,8 +61,8 @@ if not st.session_state.logged_in:
                     st.error("Credenciais invalidas")
     st.stop()
 
-# --- PAINEL PRINCIPAL (HOME) ---
-st.markdown("<div style='text-align:center; margin-top:5vh;'><h1 style='font-size:40px; font-weight:800;'>PAINEL VERO</h1><p style='color:#64748b;'>Selecione o modulo desejado</p></div>", unsafe_allow_html=True)
+# Painel Principal
+st.markdown("<div style='text-align:center; margin-top:5vh;'><h1 style='font-size:40px; font-weight:800;'>PAINEL VERO</h1></div>", unsafe_allow_html=True)
 
 col1, col2, col3 = st.columns(3)
 with col1:
@@ -94,9 +80,6 @@ with col3:
     if st.button("CONFIGURACOES", use_container_width=True):
         st.switch_page("pages/Configuracoes.py")
 
-st.markdown("<br><br>", unsafe_allow_html=True)
-_, col_out, _ = st.columns([1, 0.5, 1])
-with col_out:
-    if st.button("LOGOUT", use_container_width=True):
-        st.session_state.logged_in = False
-        st.rerun()
+if st.button("LOGOUT", use_container_width=True):
+    st.session_state.logged_in = False
+    st.rerun()
