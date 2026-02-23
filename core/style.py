@@ -3,58 +3,56 @@ import streamlit as st
 def apply_vero_style():
     st.markdown("""
     <style>
+        /* Limpeza de interface */
         header, footer, [data-testid="stSidebar"] { visibility: hidden; display: none; }
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;700;800&display=swap');
         
+        /* Fundo Sólido para evitar que elementos sumam */
         .stApp {
-            background: #0d1117;
-            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #0e1117;
             color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
 
-        /* Menu Superior (Tabs) Estilo Cápsula */
+        /* Navbar Superior Azul (Estilo Abas) */
         .stTabs [data-baseweb="tab-list"] {
-            gap: 10px;
             background-color: #161b22;
-            padding: 8px 15px;
-            border-radius: 20px;
-            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 5px;
+            border: 1px solid #30363d;
             justify-content: center;
-            position: sticky;
-            top: 10px;
-            z-index: 999;
         }
 
         .stTabs [data-baseweb="tab"] {
-            height: 45px;
-            background-color: transparent;
-            border-radius: 12px;
             color: #8b949e;
-            font-weight: 600;
-            border: none;
-            padding: 0 20px;
+            font-weight: bold;
         }
 
-        /* Estilo Azul para o Tab Selecionado conforme imagem */
         .stTabs [aria-selected="true"] {
-            background-image: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+            background-color: #238636 !important; /* Verde ou Azul de sua preferência */
+            border-radius: 8px;
             color: white !important;
-            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
         }
 
-        /* Cards de Conteúdo Arredondados */
+        /* Containers Visíveis (Cards) */
         div[data-testid="stVerticalBlockBorderWrapper"] {
-            background: rgba(22, 27, 34, 0.5) !important;
-            border: 1px solid rgba(255, 255, 255, 0.08) !important;
-            border-radius: 28px !important;
-            padding: 25px !important;
+            background-color: #161b22 !important;
+            border: 1px solid #30363d !important;
+            border-radius: 15px !important;
+            padding: 20px !important;
+            margin-bottom: 20px !important;
         }
 
+        /* Botões visíveis */
         .stButton > button {
-            border-radius: 16px !important;
-            height: 50px !important;
-            font-weight: 700 !important;
-            transition: 0.3s !important;
+            border-radius: 10px !important;
+            background-color: #21262d !important;
+            color: white !important;
+            border: 1px solid #30363d !important;
+            height: 45px;
+        }
+
+        .stButton > button:hover {
+            border-color: #8b949e !important;
         }
     </style>
     """, unsafe_allow_html=True)
