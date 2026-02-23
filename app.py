@@ -1,62 +1,25 @@
 import streamlit as st
 from core.db import get_conn
 
-# 1. Configuração da página - Mantendo o menu lateral fechado
-st.set_page_config(
-    page_title="Vero | Inteligência em Orçamentos", 
-    page_icon="🛡️", 
-    layout="wide", 
-    initial_sidebar_state="collapsed"
-)
+# 1. Configuração da página - Escondendo a sidebar por padrão
+st.set_page_config(page_title="Vero | Smart Systems", page_icon="🛡️", layout="wide", initial_sidebar_state="collapsed")
 
-# 2. CSS Avançado para Estilo "Vero Premium" e Remoção da Barra Superior
+# 2. CSS Universal (Login e Home)
 st.markdown("""
 <style>
-    /* REMOVER BARRA SUPERIOR E FOOTER */
     header {visibility: hidden;}
     footer {visibility: hidden;}
-    #MainMenu {visibility: hidden;}
+    [data-testid="stSidebar"] { display: none; }
     
-    /* Importando fontes modernas */
     @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800&display=swap');
 
-    /* Fundo Dark Gradiente Deep */
     .stApp {
         background: radial-gradient(circle at 50% 50%, #101a26 0%, #080d12 100%);
         font-family: 'Poppins', sans-serif;
+        color: white;
     }
 
-    /* Esconder Sidebar no Login */
-    [data-testid="stSidebar"] { display: none; }
-
-    /* Container do Login centralizado */
-    .login-container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        margin-top: 8%; /* Ajustado para compensar a falta da barra */
-    }
-
-    /* Título Vero */
-    .brand-title {
-        color: #ffffff;
-        font-size: 64px;
-        font-weight: 800;
-        letter-spacing: -2px;
-        margin-bottom: 0px;
-        text-shadow: 0px 10px 30px rgba(0,0,0,0.5);
-    }
-    
-    .brand-subtitle {
-        color: #3b82f6;
-        font-size: 14px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 5px;
-        margin-bottom: 50px;
-    }
-
-    /* Inputs Estilo Cápsula (Conforme sua imagem de referência) */
+    /* Estilo dos Inputs Cápsula */
     .stTextInput > div > div {
         background: rgba(255, 255, 255, 0.05) !important;
         border: 1px solid rgba(255, 255, 255, 0.1) !important;
@@ -65,76 +28,80 @@ st.markdown("""
         color: white !important;
     }
 
-    /* Botão de Login Estilo Cápsula Branca */
+    /* Botão Principal Branco */
     .stButton > button {
         background-color: #ffffff !important;
         color: #080d12 !important;
         border-radius: 50px !important;
         font-weight: 800 !important;
-        font-size: 16px !important;
-        padding: 12px 0px !important;
-        width: 100%;
         border: none !important;
         transition: all 0.3s ease !important;
-        margin-top: 30px;
     }
-
     .stButton > button:hover {
-        transform: scale(1.03) !important;
+        transform: scale(1.05) !important;
         background-color: #3b82f6 !important;
         color: white !important;
     }
 
-    /* Ajuste para remover bordas do formulário */
-    [data-testid="stForm"] {
-        border: none !important;
-        padding: 0 !important;
+    /* Card de Opções na Home */
+    .option-card {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 20px;
+        padding: 30px;
+        text-align: center;
+        transition: 0.3s;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# 3. Lógica de Autenticação
-def validar_login(email, senha):
-    try:
-        conn = get_conn()
-        with conn.cursor() as cur:
-            cur.execute("SELECT id, email FROM usuarios WHERE email = %s AND senha = %s", (email, senha))
-            return cur.fetchone()
-    except:
-        return None
-
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 
-# --- TELA DE LOGIN VERO ---
+# --- LÓGICA DE LOGIN ---
 if not st.session_state.logged_in:
     _, col_login, _ = st.columns([1, 1, 1])
-    
     with col_login:
-        st.markdown('<div class="login-container">', unsafe_allow_html=True)
-        st.markdown('<h1 class="brand-title">VERO</h1>', unsafe_allow_html=True)
-        st.markdown('<p class="brand-subtitle">Smart Systems</p>', unsafe_allow_html=True)
-        
-        with st.form("login_form"):
-            email_i = st.text_input("Username", placeholder="E-mail de acesso", label_visibility="collapsed")
-            senha_i = st.text_input("Password", type="password", placeholder="Senha", label_visibility="collapsed")
-            
-            if st.form_submit_button("LOGIN"):
-                user = validar_login(email_i, senha_i)
+        st.markdown("<div style='text-align:center; margin-top:15vh;'><h1 style='font-size:64px; font-weight:800; margin-bottom:0;'>VERO</h1><p style='letter-spacing:5px; color:#3b82f6;'>SMART SYSTEMS</p></div>", unsafe_allow_html=True)
+        with st.form("login"):
+            e = st.text_input("Username", placeholder="E-mail", label_visibility="collapsed")
+            s = st.text_input("Password", type="password", placeholder="Senha", label_visibility="collapsed")
+            if st.form_submit_button("LOGIN", use_container_width=True):
+                conn = get_conn()
+                with conn.cursor() as cur:
+                    cur.execute("SELECT id, email FROM usuarios WHERE email = %s AND senha = %s", (e, s))
+                    user = cur.fetchone()
                 if user:
                     st.session_state.logged_in = True
                     st.session_state.user_id = user[0]
-                    st.session_state.user_email = user[1]
                     st.rerun()
                 else:
-                    st.error("Credenciais inválidas.")
-        
-        st.markdown('</div>', unsafe_allow_html=True)
+                    st.error("Erro de acesso.")
     st.stop()
 
-# --- ÁREA LOGADA ---
-# Reativar cabeçalho se desejar na área interna, ou manter oculto para design personalizado
-st.markdown("<style>[data-testid='stSidebar'] { display: block !important; }</style>", unsafe_allow_html=True)
+# --- HOME LOGADA (MENU DE BOTÕES) ---
+st.markdown("<div style='text-align:center; margin-top:5vh;'><h1 style='font-size:40px; font-weight:800;'>PAINEL VERO</h1><p style='color:#64748b;'>Selecione uma ferramenta abaixo</p></div>", unsafe_allow_html=True)
 
-st.title(f"Bem-vindo ao Vero")
-st.write("Acesso autorizado. Utilize o menu lateral.")
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.markdown("<div class='option-card'><h3>📝 Orçamentos</h3></div>", unsafe_allow_html=True)
+    if st.button("ABRIR GERADOR", use_container_width=True, key="btn_orc"):
+        st.switch_page("pages/1_Gerador_de_Orcamento.py")
+
+with col2:
+    st.markdown("<div class='option-card'><h3>💰 Preços</h3></div>", unsafe_allow_html=True)
+    if st.button("EDITAR TABELA", use_container_width=True, key="btn_pre"):
+        st.switch_page("pages/Tabela_de_Precos.py")
+
+with col3:
+    st.markdown("<div class='option-card'><h3>⚙️ Ajustes</h3></div>", unsafe_allow_html=True)
+    if st.button("CONFIGURAÇÕES", use_container_width=True, key="btn_conf"):
+        st.switch_page("pages/Configuracoes.py")
+
+st.markdown("<br><br>", unsafe_allow_html=True)
+_, col_out, _ = st.columns([1, 0.5, 1])
+with col_out:
+    if st.button("DESLOGAR", use_container_width=True):
+        st.session_state.logged_in = False
+        st.rerun()
