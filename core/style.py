@@ -3,47 +3,43 @@ import streamlit as st
 def apply_vero_style():
     st.markdown("""
     <style>
-        header {visibility: hidden;} 
-        footer {visibility: hidden;}
-        [data-testid="stSidebar"] { display: none; }
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+        /* Estilo base do VERO */
+        header, footer, [data-testid="stSidebar"] { visibility: hidden; display: none; }
         
         .stApp {
-            background: radial-gradient(circle at 20% 20%, #0f172a 0%, #020617 100%);
-            font-family: 'Inter', sans-serif;
-            color: #f8fafc;
+            background: #020617;
+            background-image: radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.05) 0px, transparent 50%);
         }
 
-        /* CORREÇÃO DE SOBREPOSIÇÃO: Limpa bordas duplas */
+        /* Cards Arredondados com Glassmorphism Avançado */
         div[data-testid="stVerticalBlockBorderWrapper"] {
-            background: rgba(255, 255, 255, 0.03) !important;
-            border: 1px solid rgba(255, 255, 255, 0.1) !important;
-            border-radius: 24px !important;
-            padding: 25px !important;
-            margin-bottom: 10px !important;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.2) !important;
+            background: rgba(255, 255, 255, 0.02) !important;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.05) !important;
+            border-radius: 30px !important;
+            padding: 30px !important;
+            transition: border 0.3s ease, box-shadow 0.3s ease !important;
         }
 
+        div[data-testid="stVerticalBlockBorderWrapper"]:hover {
+            border-color: rgba(59, 130, 246, 0.4) !important;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4) !important;
+        }
+
+        /* Botões com Glow Effect */
         .stButton > button {
-            border-radius: 14px !important;
-            height: 50px !important;
-            background: #ffffff !important;
-            color: #020617 !important;
-            font-weight: 700 !important;
+            border-radius: 20px !important;
+            background: linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%) !important;
             border: none !important;
-            transition: all 0.3s ease !important;
+            color: #020617 !important;
+            font-weight: 800 !important;
+            box-shadow: 0 0 0 rgba(59, 130, 246, 0);
+            transition: 0.4s !important;
         }
 
         .stButton > button:hover {
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.4) !important;
             background: #3b82f6 !important;
-            color: white !important;
-            transform: translateY(-2px);
-        }
-
-        .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] {
-            background-color: rgba(255, 255, 255, 0.05) !important;
-            border-radius: 12px !important;
-            border: 1px solid rgba(255, 255, 255, 0.1) !important;
             color: white !important;
         }
     </style>
