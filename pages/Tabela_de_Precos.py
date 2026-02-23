@@ -12,8 +12,9 @@ st.markdown("""
 <style>
     header {visibility: hidden;} footer {visibility: hidden;}
     [data-testid="stSidebar"] { display: none; }
-    .stApp { background: radial-gradient(circle at 50% 50%, #101a26 0%, #080d12 100%); color: white; }
+    .stApp { background: radial-gradient(circle at 50% 50%, #101a26 0%, #080d12 100%); color: white; font-family: 'Poppins', sans-serif; }
     .stButton > button { background-color: #ffffff !important; color: #080d12 !important; border-radius: 50px !important; font-weight: 800 !important; }
+    .stDataEditor { background-color: rgba(255,255,255,0.05) !important; border-radius: 15px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -24,12 +25,12 @@ st.title("Tabela de Precos")
 
 conn = get_conn()
 
-with st.container(border=True):
-    with st.form("add"):
-        c1, c2, v = st.columns(3)
+with st.container():
+    with st.form("add_item"):
+        c1, c2, c3 = st.columns(3)
         chave = c1.text_input("Chave")
         nome = c2.text_input("Produto")
-        valor = v.number_input("Valor", min_value=0.0)
+        valor = c3.number_input("Preco", min_value=0.0)
         if st.form_submit_button("CADASTRAR"):
             with conn.cursor() as cur:
                 cur.execute("INSERT INTO precos (chave, nome, valor, usuario_id) VALUES (%s, %s, %s, %s)", (chave, nome, valor, user_id))
