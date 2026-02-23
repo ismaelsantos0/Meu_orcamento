@@ -1,0 +1,9 @@
+[theme]
+primaryColor = "#3b82f6" # Um azul moderno para os destaques (combina com a RR Smart)
+backgroundColor = "#1a1c23" # O fundo escuro principal do site
+secondaryBackgroundColor = "#262933" # O fundo da barra lateral
+textColor = "#ffffff"
+font = "sans serif"
+
+[server]
+enableCORS = false
