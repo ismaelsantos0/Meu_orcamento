@@ -32,11 +32,39 @@ def load_plugins():
         return list(plugins.values())
     return list(plugins)
 
+# =========================
+# Busca os Dados da Empresa no Banco
+# =========================
+def buscar_dados_empresa(conn):
+    """Busca as configurações salvas na tela de Configurações."""
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT nome_empresa, whatsapp, pagamento_padrao, garantia_padrao, validade_dias FROM config_empresa WHERE id = 1")
+            linha = cur.fetchone()
+            if linha:
+                return {
+                    "nome": linha[0],
+                    "whatsapp": linha[1],
+                    "pagamento": linha[2],
+                    "garantia": linha[3],
+                    "validade": linha[4]
+                }
+    except Exception as e:
+        pass # Se a tabela não existir ainda ou der erro, passa direto
+    
+    # Valores de emergência caso o usuário não tenha preenchido nada ainda
+    return {
+        "nome": "Minha Empresa",
+        "whatsapp": "(00) 00000-0000",
+        "pagamento": "À combinar",
+        "garantia": "90 dias",
+        "validade": 7
+    }
 
 # =========================
-# PDF - Wrapper Atualizado
+# PDF - Wrapper Atualizado (Agora Dinâmico!)
 # =========================
-def generate_pdf_bytes(single_quote: dict, tipo: str = "summary", logo_path: str | None = None) -> bytes:
+def generate_pdf_bytes(single_quote: dict, dados_empresa: dict, tipo: str = "summary", logo_path: str | None = None) -> bytes:
     if "summary_full" not in single_quote:
         desc = single_quote.get("service_description", {})
         if isinstance(desc, dict):
@@ -58,8 +86,8 @@ def generate_pdf_bytes(single_quote: dict, tipo: str = "summary", logo_path: str
 
     quote_for_pdf = {
         "logo_path": logo_path,
-        "empresa": "RR Smart Soluções", 
-        "whatsapp": single_quote.get("client_phone") or "(95) 98418-7832", 
+        "empresa": dados_empresa["nome"], 
+        "whatsapp": single_quote.get("client_phone") or dados_empresa["whatsapp"], 
         "data_str": datetime.now().strftime("%d/%m/%Y"),
         "cliente": single_quote.get("client_name") or "Cliente não informado",
         "servicos": [single_quote], 
@@ -67,9 +95,9 @@ def generate_pdf_bytes(single_quote: dict, tipo: str = "summary", logo_path: str
         "desconto_valor": 0.0,
         "desconto_label": "",
         "total": single_quote.get("subtotal", 0.0),
-        "pagamento": "À vista ou 50% entrada / 50% na entrega", 
-        "garantia": "Garantia de 90 dias",
-        "validade_dias": 7
+        "pagamento": dados_empresa["pagamento"], 
+        "garantia": dados_empresa["garantia"],
+        "validade_dias": dados_empresa["validade"]
     }
 
     buffer = io.BytesIO()
@@ -97,7 +125,6 @@ st.set_page_config(page_title="Gerador de Orçamentos", page_icon="🧾", layout
 
 st.markdown("""
 <style>
-    /* Estilizando os Cards modernos */
     [data-testid="stVerticalBlockBorderWrapper"] {
         background-color: #262933 !important;
         border-radius: 12px !important;
@@ -105,18 +132,16 @@ st.markdown("""
         box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2) !important;
         padding: 1.5rem !important;
     }
-
-    /* MÁGICA: TRANSFORMA O RADIO EM PASTAS ORGANIZADORAS (TABS FÍSICAS) */
     div[data-testid="stRadio"] > div[role="radiogroup"] {
         flex-direction: row;
         gap: 4px;
-        border-bottom: 3px solid #3b82f6; /* Linha azul base da pasta */
+        border-bottom: 3px solid #3b82f6; 
     }
     div[data-testid="stRadio"] > div[role="radiogroup"] > label {
         background-color: #1a1c23 !important;
         border: 1px solid #333845 !important;
         border-bottom: none !important;
-        border-radius: 12px 12px 0 0 !important; /* Arredondado apenas em cima = Formato de Pasta! */
+        border-radius: 12px 12px 0 0 !important; 
         padding: 10px 20px !important;
         margin-bottom: 0 !important;
         opacity: 0.6;
@@ -126,12 +151,12 @@ st.markdown("""
         opacity: 0.9;
     }
     div[data-testid="stRadio"] > div[role="radiogroup"] > label[data-checked="true"] {
-        background-color: #3b82f6 !important; /* A pasta ativa ganha cor */
+        background-color: #3b82f6 !important; 
         border-color: #3b82f6 !important;
         opacity: 1;
     }
     div[data-testid="stRadio"] > div[role="radiogroup"] > label span[data-baseweb="radio"] {
-        display: none !important; /* Esconde a bolinha de seleção */
+        display: none !important; 
     }
     div[data-testid="stRadio"] > div[role="radiogroup"] > label div[dir="auto"] {
         margin-left: 0px !important; 
@@ -142,8 +167,6 @@ st.markdown("""
         margin: 0 !important;
         font-size: 15px !important;
     }
-    
-    /* Botões Padrão */
     .stButton > button {
         border-radius: 8px !important;
         font-weight: 600 !important;
@@ -152,10 +175,20 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+try:
+    conn = get_conn()
+except Exception as e:
+    st.error(f"Falha ao conectar no banco de dados: {e}")
+    st.stop()
+
+# Busca as configurações logo ao carregar a página
+config_empresa = buscar_dados_empresa(conn)
+
 ASSETS_DIR = Path(__file__).parent / "assets"
 DEFAULT_LOGO = ASSETS_DIR / "logo.png"
 
-st.title("🛡️ RR Smart Soluções | Orçamentos")
+# O Título da página agora puxa o nome da empresa dinamicamente!
+st.title(f"🛡️ {config_empresa['nome']} | Orçamentos")
 
 # =========================
 # Barra Lateral (Menu)
@@ -183,20 +216,12 @@ if not plugins:
 
 plugin_by_label = {p.label: p for p in plugins}
 
-try:
-    conn = get_conn()
-except Exception as e:
-    st.error(f"Falha ao conectar no banco de dados: {e}")
-    st.stop()
-
-
 # =========================
 # CARD 1: Seleção Estilo Pastas Organizadoras
 # =========================
 with st.container(border=True):
     st.subheader("📁 Qual serviço será realizado?")
 
-    # Agrupa os serviços em categorias
     todos_servicos = list(plugin_by_label.keys())
     cat_cameras = [s for s in todos_servicos if "câmera" in s.lower() or "camera" in s.lower() or "cftv" in s.lower()]
     cat_cercas = [s for s in todos_servicos if "cerca" in s.lower() or "concertina" in s.lower() or "linear" in s.lower()]
@@ -209,12 +234,10 @@ with st.container(border=True):
     if cat_motores: categorias["🚪 Motores"] = cat_motores
     if cat_outros: categorias["🔧 Outros"] = cat_outros
 
-    # As "Pastas" vão aparecer aqui perfeitamente alinhadas
     cat_escolhida = st.radio("Categoria", list(categorias.keys()), horizontal=True, label_visibility="collapsed")
-
     opcoes_servico = categorias[cat_escolhida]
     
-    st.write("") # Espaçinho dentro da pasta
+    st.write("") 
     if len(opcoes_servico) > 1:
         service_label = st.selectbox("Selecione a variação do serviço:", opcoes_servico)
     else:
@@ -224,7 +247,6 @@ with st.container(border=True):
     plugin = plugin_by_label[service_label]
     
     st.markdown("---")
-    # Campos dinâmicos do serviço escolhido (Aparecem "dentro" da pasta)
     inputs = plugin.render_fields()
 
 
@@ -273,7 +295,6 @@ with colB:
 if not gerar:
     st.stop()
 
-# ----- Processamento dos Cálculos -----
 try:
     quote = plugin.compute(conn, inputs)
 except Exception as e:
@@ -300,26 +321,25 @@ subtotal = float(quote.get("subtotal", 0.0))
 
 
 # =========================
-# CARD 3: RESULTADOS (TABS/PASTAS NATIVAS)
+# RESULTADOS (TABS/PASTAS NATIVAS)
 # =========================
 st.divider()
 st.subheader("📊 Resultados do Orçamento")
 
-# Aqui usamos as Pastas (Tabs) nativas do sistema para organizar a tela final!
 aba_proposta, aba_interno, aba_materiais = st.tabs(["🧑‍💼 Proposta Cliente", "🔒 Controle Interno", "🛒 Lista de Peças"])
 
-# --- CONTEÚDO DA PASTA 1 ---
 with aba_proposta:
     st.write("Baixe o PDF com as vantagens ou copie o texto para enviar no WhatsApp.")
     col_pdf, col_wpp = st.columns([1, 2])
 
     with col_pdf:
         try:
-            pdf_cliente = generate_pdf_bytes(quote, tipo="summary", logo_path=logo_path)
+            # Passamos os dados da empresa pro gerador de PDF
+            pdf_cliente = generate_pdf_bytes(quote, config_empresa, tipo="summary", logo_path=logo_path)
             st.download_button(
                 label="📄 Baixar PDF da Proposta",
                 data=pdf_cliente,
-                file_name=f"Proposta_RR_Smart_{datetime.now().strftime('%Y%m%d')}.pdf",
+                file_name=f"Proposta_{config_empresa['nome'].replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.pdf",
                 mime="application/pdf",
                 use_container_width=True,
                 type="primary" 
@@ -328,7 +348,8 @@ with aba_proposta:
             st.error(f"Erro ao gerar PDF do Cliente: {e}")
 
     with col_wpp:
-        wpp_texto = f"🛡️ *RR Smart Soluções*\n\n"
+        # WhatsApp Dinâmico!
+        wpp_texto = f"🛡️ *{config_empresa['nome']}*\n\n"
         if cliente_nome:
             wpp_texto += f"Olá, *{cliente_nome}*! Segue a nossa proposta comercial:\n\n"
         else:
@@ -340,14 +361,13 @@ with aba_proposta:
             wpp_texto += f"{desc_wpp}\n\n"
 
         wpp_texto += f"💰 *Investimento Total: {brl(subtotal)}*\n\n"
-        wpp_texto += f"💳 *Condições de Pagamento:*\nÀ vista ou 50% entrada / 50% na entrega\n\n"
-        wpp_texto += f"⚙️ *Garantia:* 90 dias\n"
-        wpp_texto += f"⏳ *Validade:* 7 dias\n\n"
+        wpp_texto += f"💳 *Condições de Pagamento:*\n{config_empresa['pagamento']}\n\n"
+        wpp_texto += f"⚙️ *Garantia:* {config_empresa['garantia']}\n"
+        wpp_texto += f"⏳ *Validade:* {config_empresa['validade']} dias\n\n"
         wpp_texto += "Qualquer dúvida, estou à disposição para fecharmos o serviço! 🤝"
         
         st.text_area("💬 Copiar para WhatsApp", wpp_texto, height=200)
 
-# --- CONTEÚDO DA PASTA 2 ---
 with aba_interno:
     st.markdown(f"**Total Calculado: {brl(subtotal)}**")
     st.write("Visão detalhada de peças e custos para o seu controle. (Não aparece para o cliente)")
@@ -357,7 +377,6 @@ with aba_interno:
     else:
         st.warning("Nenhum item retornado.")
 
-# --- CONTEÚDO DA PASTA 3 ---
 with aba_materiais:
     only_materials = st.checkbox("Gerar somente materiais (ignorar mão de obra)", value=True)
     materials = build_materials_list(quote, exclude_keywords=None if only_materials else [], group_same_desc=True)
