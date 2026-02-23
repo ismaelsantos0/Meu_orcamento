@@ -1,61 +1,53 @@
 import streamlit as st
+from core.style import apply_vero_style
 from core.db import get_conn
 
 st.set_page_config(page_title="Vero | RR Smart", layout="wide", initial_sidebar_state="collapsed")
+apply_vero_style()
 
-st.markdown("""
-<style>
-    header {visibility: hidden;} footer {visibility: hidden;}
-    [data-testid="stSidebar"] { display: none; }
-    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800&display=swap');
-    .stApp { background: radial-gradient(circle at 50% 50%, #101a26 0%, #080d12 100%); font-family: 'Poppins', sans-serif; color: white; }
-    .stButton > button { background-color: #ffffff !important; color: #080d12 !important; border-radius: 50px !important; font-weight: 800 !important; border: none !important; height: 50px; }
-    .stButton > button:hover { transform: scale(1.05) !important; background-color: #3b82f6 !important; color: white !important; }
-    .option-card { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 20px; padding: 20px; text-align: center; }
-</style>
-""", unsafe_allow_html=True)
-
-if 'logged_in' not in st.session_state:
-    st.session_state.logged_in = False
+if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 
 if not st.session_state.logged_in:
-    _, col_login, _ = st.columns([1, 1, 1])
+    # Lógica de login simplificada
+    _, col_login, _ = st.columns([1, 1.2, 1])
     with col_login:
-        st.markdown("<div style='text-align:center; margin-top:15vh;'><h1 style='font-size:64px; font-weight:800; margin-bottom:0;'>VERO</h1><p style='letter-spacing:5px; color:#3b82f6;'>SMART SYSTEMS</p></div>", unsafe_allow_html=True)
+        st.markdown("<h1 style='text-align:center;'>VERO</h1>", unsafe_allow_html=True)
         with st.form("login"):
-            e = st.text_input("User", placeholder="E-mail", label_visibility="collapsed")
-            s = st.text_input("Pass", type="password", placeholder="Senha", label_visibility="collapsed")
-            if st.form_submit_button("LOGIN", use_container_width=True):
+            u = st.text_input("Usuário")
+            p = st.text_input("Senha", type="password")
+            if st.form_submit_button("ENTRAR", use_container_width=True):
                 conn = get_conn()
                 with conn.cursor() as cur:
-                    cur.execute("SELECT id, email FROM usuarios WHERE email = %s AND senha = %s", (e, s))
+                    cur.execute("SELECT id FROM usuarios WHERE email=%s AND senha=%s", (u, p))
                     user = cur.fetchone()
                 if user:
                     st.session_state.logged_in = True
                     st.session_state.user_id = user[0]
                     st.rerun()
-                else:
-                    st.error("Credenciais invalidas")
     st.stop()
 
-st.markdown("<div style='text-align:center; margin-top:5vh;'><h1 style='font-size:40px; font-weight:800;'>PAINEL VERO</h1></div>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align:center;'>PAINEL VERO</h1>", unsafe_allow_html=True)
 
-c1, c2 = st.columns(2)
-c3, c4 = st.columns(2)
+col1, col2 = st.columns(2, gap="large")
+col3, col4 = st.columns(2, gap="large")
 
-with c1:
-    st.markdown("<div class='option-card'><h3>Orcamentos</h3></div>", unsafe_allow_html=True)
-    if st.button("ABRIR GERADOR", use_container_width=True, key="h1"): st.switch_page("pages/1_Gerador_de_Orcamento.py")
-with c2:
-    st.markdown("<div class='option-card'><h3>Precos</h3></div>", unsafe_allow_html=True)
-    if st.button("TABELA PRIVADA", use_container_width=True, key="h2"): st.switch_page("pages/Tabela_de_Precos.py")
-with c3:
-    st.markdown("<div class='option-card'><h3>Textos PDF</h3></div>", unsafe_allow_html=True)
-    if st.button("MODELOS DE TEXTO", use_container_width=True, key="h3"): st.switch_page("pages/Modelos_de_Texto.py")
-with c4:
-    st.markdown("<div class='option-card'><h3>Ajustes</h3></div>", unsafe_allow_html=True)
-    if st.button("CONFIGURACOES", use_container_width=True, key="h4"): st.switch_page("pages/Configuracoes.py")
+with col1:
+    with st.container(border=True):
+        st.subheader("Orçamentos")
+        if st.button("ABRIR GERADOR", use_container_width=True, key="h1"): st.switch_page("pages/1_Gerador_de_Orcamento.py")
+with col2:
+    with st.container(border=True):
+        st.subheader("Tabela de Preços")
+        if st.button("VER MATERIAIS", use_container_width=True, key="h2"): st.switch_page("pages/Tabela_de_Precos.py")
+with col3:
+    with st.container(border=True):
+        st.subheader("Modelos de Texto")
+        if st.button("EDITAR BENEFÍCIOS", use_container_width=True, key="h3"): st.switch_page("pages/Modelos_de_Texto.py")
+with col4:
+    with st.container(border=True):
+        st.subheader("Configurações")
+        if st.button("AJUSTES GERAIS", use_container_width=True, key="h4"): st.switch_page("pages/Configuracoes.py")
 
-if st.button("LOGOUT", use_container_width=True, key="h_out"):
+if st.button("SAIR DO SISTEMA", use_container_width=True):
     st.session_state.logged_in = False
     st.rerun()
