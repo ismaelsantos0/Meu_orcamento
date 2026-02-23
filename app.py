@@ -20,7 +20,7 @@ if 'orcamento_pronto' not in st.session_state:
     st.session_state.orcamento_pronto = False
 
 # ==========================================
-# 3. TELA DE LOGIN (COM FORMULÁRIO SEGURO)
+# 3. TELA DE LOGIN
 # ==========================================
 if not st.session_state.logged_in:
     st.markdown("<br><br><br>", unsafe_allow_html=True)
@@ -28,12 +28,10 @@ if not st.session_state.logged_in:
     with col_login:
         st.markdown("<div style='text-align:center;'><h1>VERO</h1><p style='color:#3b82f6; letter-spacing:5px;'>SMART SYSTEMS</p></div>", unsafe_allow_html=True)
         with st.container(border=True):
-            # Único st.form mantido para permitir o "Enter" no teclado
             with st.form("login_form"):
                 email = st.text_input("Usuário")
                 senha = st.text_input("Senha", type="password")
                 
-                # BOTÃO DE SUBMIT (PERFEITAMENTE ALINHADO DENTRO DO WITH)
                 submit_login = st.form_submit_button("ENTRAR NO SISTEMA", use_container_width=True)
                 
                 if submit_login:
@@ -55,6 +53,7 @@ if not st.session_state.logged_in:
 user_id = st.session_state.user_id
 conn = get_conn()
 
+# Busca as configurações. Se não existir no banco, usa os padrões da RR Smart Soluções.
 with conn.cursor() as cur:
     cur.execute("SELECT nome_empresa, whatsapp, logo, pagamento_padrao, garantia_padrao, validade_dias FROM config_empresa WHERE usuario_id = %s", (user_id,))
     cfg = cur.fetchone() or ("RR Smart Soluções", "95984187832", None, "A combinar", "90 dias", 7)
@@ -130,7 +129,6 @@ with tab_gerador:
                     q_item = st.number_input(f"Qtd: {opcoes_dict[s_item]['nome']}", min_value=1, key=f"q_{s_item}")
                     extras_final.append({"info": opcoes_dict[s_item], "qtd": q_item})
             
-            # Botão normal (não precisa de form)
             if st.button("CALCULAR E FINALIZAR PROPOSTA", use_container_width=True):
                 if not cliente:
                     st.warning("Por favor, preencha o nome do cliente.")
@@ -162,7 +160,7 @@ with tab_gerador:
                     st.rerun()
 
 # ==========================================
-# ABA 2: TABELA DE PREÇOS (Sem st.form para evitar bugs)
+# ABA 2: TABELA DE PREÇOS
 # ==========================================
 with tab_precos:
     st.header("Gestão de Preços")
@@ -173,7 +171,6 @@ with tab_precos:
         p_vl = c_p3.number_input("Preço R$", min_value=0.0, key="k_preco")
         p_ct = c_p4.selectbox("Categoria", ["CFTV", "Cerca/Concertina", "Motor de Portão", "Geral"], key="k_cat")
         
-        # Botão normal em vez de form_submit_button
         if st.button("CADASTRAR NOVO ITEM", use_container_width=True):
             if p_ch and p_nm:
                 with conn.cursor() as cur:
@@ -227,7 +224,7 @@ with tab_modelos:
             st.success("Texto salvo!")
 
 # ==========================================
-# ABA 4: CONFIGURAÇÕES (Sem st.form)
+# ABA 4: CONFIGURAÇÕES (CORRIGIDA COM UPSERT E LOGO)
 # ==========================================
 with tab_config:
     st.header("Configurações da Empresa")
@@ -242,13 +239,26 @@ with tab_config:
         
         v_pad = st.number_input("Validade do Orçamento (Dias)", value=cfg[5], min_value=1)
         
+        st.markdown("---")
+        st.subheader("Identidade Visual")
+        logo_file = st.file_uploader("Upload da Logo (PNG/JPG)", type=["png", "jpg", "jpeg"])
+        
         if st.button("SALVAR CONFIGURAÇÕES", use_container_width=True):
+            logo_bytes = logo_file.read() if logo_file else cfg[2]
+            
             with conn.cursor() as cur:
                 cur.execute("""
-                    UPDATE config_empresa 
-                    SET nome_empresa=%s, whatsapp=%s, pagamento_padrao=%s, garantia_padrao=%s, validade_dias=%s 
-                    WHERE usuario_id=%s
-                """, (n_emp, w_emp, p_pad, g_pad, v_pad, user_id))
+                    INSERT INTO config_empresa 
+                    (usuario_id, nome_empresa, whatsapp, logo, pagamento_padrao, garantia_padrao, validade_dias) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (usuario_id) DO UPDATE SET
+                    nome_empresa = EXCLUDED.nome_empresa,
+                    whatsapp = EXCLUDED.whatsapp,
+                    logo = EXCLUDED.logo,
+                    pagamento_padrao = EXCLUDED.pagamento_padrao,
+                    garantia_padrao = EXCLUDED.garantia_padrao,
+                    validade_dias = EXCLUDED.validade_dias
+                """, (user_id, n_emp, w_emp, logo_bytes, p_pad, g_pad, v_pad))
             conn.commit()
             st.success("Configurações atualizadas com sucesso!")
             st.rerun()
