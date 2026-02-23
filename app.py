@@ -40,26 +40,22 @@ if not st.session_state.logged_in:
 
 st.markdown("<div style='text-align:center; margin-top:5vh;'><h1 style='font-size:40px; font-weight:800;'>PAINEL VERO</h1></div>", unsafe_allow_html=True)
 
-col1, col2 = st.columns(2)
-col3, col4 = st.columns(2)
+c1, c2 = st.columns(2)
+c3, c4 = st.columns(2)
 
-with col1:
+with c1:
     st.markdown("<div class='option-card'><h3>Orcamentos</h3></div>", unsafe_allow_html=True)
-    if st.button("ABRIR GERADOR", use_container_width=True, key="btn_gerador"):
-        st.switch_page("pages/1_Gerador_de_Orcamento.py")
-with col2:
+    if st.button("ABRIR GERADOR", use_container_width=True, key="h1"): st.switch_page("pages/1_Gerador_de_Orcamento.py")
+with c2:
     st.markdown("<div class='option-card'><h3>Precos</h3></div>", unsafe_allow_html=True)
-    if st.button("TABELA PRIVADA", use_container_width=True, key="btn_tabela"):
-        st.switch_page("pages/Tabela_de_Precos.py")
-with col3:
+    if st.button("TABELA PRIVADA", use_container_width=True, key="h2"): st.switch_page("pages/Tabela_de_Precos.py")
+with c3:
     st.markdown("<div class='option-card'><h3>Textos PDF</h3></div>", unsafe_allow_html=True)
-    if st.button("MODELOS DE TEXTO", use_container_width=True, key="btn_textos"):
-        st.switch_page("pages/Modelos_de_Texto.py")
-with col4:
+    if st.button("MODELOS DE TEXTO", use_container_width=True, key="h3"): st.switch_page("pages/Modelos_de_Texto.py")
+with c4:
     st.markdown("<div class='option-card'><h3>Ajustes</h3></div>", unsafe_allow_html=True)
-    if st.button("CONFIGURACOES", use_container_width=True, key="btn_config"):
-        st.switch_page("pages/Configuracoes.py")
+    if st.button("CONFIGURACOES", use_container_width=True, key="h4"): st.switch_page("pages/Configuracoes.py")
 
-if st.button("LOGOUT", use_container_width=True, key="btn_logout"):
+if st.button("LOGOUT", use_container_width=True, key="h_out"):
     st.session_state.logged_in = False
     st.rerun()
