@@ -1,6 +1,6 @@
 import streamlit as st
 
-# 1. CONFIGURAÇÃO OBRIGATÓRIA (SEMPRE A PRIMEIRA LINHA)
+# 1. CONFIGURAÇÃO OBRIGATÓRIA (Força a barra a nascer fechada)
 st.set_page_config(page_title="Vero | RR Smart Soluções", layout="wide", initial_sidebar_state="collapsed")
 
 import pandas as pd
@@ -11,7 +11,7 @@ from core.style import apply_vero_style
 from core.materials import build_materials_list
 import services.registry as registry
 
-# 2. APLICA ESTILO (Certifique-se que o seu core/style.py está com aquele visual escuro seguro que mandei antes)
+# 2. APLICA ESTILO (Extermina a barra lateral com CSS)
 apply_vero_style()
 
 if 'logged_in' not in st.session_state: st.session_state.logged_in = False
@@ -38,7 +38,7 @@ if not st.session_state.logged_in:
                         st.rerun()
                     else:
                         st.error("Credenciais inválidas")
-    st.stop() # PARA TUDO SE NÃO ESTIVER LOGADO
+    st.stop()
 
 # 4. CARREGAMENTO DE DADOS GERAIS
 user_id = st.session_state.user_id
@@ -101,13 +101,11 @@ with tab_gerador:
             zap_cli = c2.text_input("WhatsApp do Cliente", placeholder="95984...")
             
             plugins = registry.get_plugins()
-            # CORREÇÃO: Mostrando o NOME (label) em vez do ID
             servico_label = st.selectbox("Selecione o Serviço", list(p.label for p in plugins.values()))
             plugin = next(p for p in plugins.values() if p.label == servico_label)
             
             inputs = plugin.render_fields()
             
-            # Adicionais da Tabela de Preços
             cat_map = {"Camera": "CFTV", "Motor": "Motor de Portão", "Cerca": "Cerca/Concertina", "Concertina": "Cerca/Concertina"}
             cat_match = next((v for k, v in cat_map.items() if k in servico_label), "Geral")
             
@@ -127,21 +125,18 @@ with tab_gerador:
                 if not cliente:
                     st.warning("Por favor, preencha o nome do cliente.")
                 else:
-                    # 1. Calcula itens do plugin e extras
                     res = plugin.compute(conn, inputs)
                     for ex in extras_final:
                         sub_ex = ex['qtd'] * ex['info']['valor']
                         res['items'].append({'desc': ex['info']['nome'], 'qty': ex['qtd'], 'unit': ex['info']['valor'], 'sub': sub_ex})
                         res['subtotal'] += sub_ex
                     
-                    # 2. CORREÇÃO: Busca o texto detalhado correspondente ao serviço escolhido
                     with conn.cursor() as cur:
                         cur.execute("SELECT texto_detalhado FROM modelos_texto WHERE usuario_id = %s AND servico_tipo = %s", (user_id, cat_match))
                         t_row = cur.fetchone()
                     texto_pdf = t_row[0] if t_row else "Instalação profissional padrão."
                     res['summary_client'] = texto_pdf
                     
-                    # 3. Salva os dados para a tela de resultado
                     st.session_state.dados_finais = {
                         "cliente": cliente, 
                         "whatsapp_cliente": zap_cli, 
@@ -157,7 +152,7 @@ with tab_gerador:
                     st.rerun()
 
 # ==========================================
-# ABA 2: TABELA DE PREÇOS (RESTAURADA)
+# ABA 2: TABELA DE PREÇOS
 # ==========================================
 with tab_precos:
     st.header("Gestão de Preços")
@@ -175,7 +170,6 @@ with tab_precos:
                 st.rerun()
 
     st.markdown("### Itens Cadastrados")
-    # CORREÇÃO: Restauração das Abas por Categoria
     sub_tabs = st.tabs(["Todos", "CFTV", "Cerca/Concertina", "Motor de Portão", "Geral"])
     cats = [None, "CFTV", "Cerca/Concertina", "Motor de Portão", "Geral"]
     
@@ -193,7 +187,7 @@ with tab_precos:
                 st.info("Nenhum item cadastrado nesta categoria.")
 
 # ==========================================
-# ABA 3: MODELOS DE TEXTO (RESTAURADA)
+# ABA 3: MODELOS DE TEXTO
 # ==========================================
 with tab_modelos:
     st.header("Modelos de Proposta PDF")
@@ -218,7 +212,7 @@ with tab_modelos:
             st.success("Texto salvo! Ele aparecerá nos próximos orçamentos desta categoria.")
 
 # ==========================================
-# ABA 4: CONFIGURAÇÕES (RESTAURADA)
+# ABA 4: CONFIGURAÇÕES
 # ==========================================
 with tab_config:
     st.header("Configurações da Empresa")
@@ -233,19 +227,3 @@ with tab_config:
             g_pad = c_e4.text_input("Garantia Padrão", value=cfg[4])
             
             v_pad = st.number_input("Validade do Orçamento (Dias)", value=cfg[5], min_value=1)
-            
-            if st.form_submit_button("SALVAR CONFIGURAÇÕES", use_container_width=True):
-                with conn.cursor() as cur:
-                    cur.execute("""
-                        UPDATE config_empresa 
-                        SET nome_empresa=%s, whatsapp=%s, pagamento_padrao=%s, garantia_padrao=%s, validade_dias=%s 
-                        WHERE usuario_id=%s
-                    """, (n_emp, w_emp, p_pad, g_pad, v_pad, user_id))
-                conn.commit()
-                st.success("Configurações atualizadas com sucesso!")
-                st.rerun()
-                
-    st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("🔴 SAIR DO SISTEMA", use_container_width=True):
-        st.session_state.logged_in = False
-        st.rerun()
