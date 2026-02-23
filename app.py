@@ -8,34 +8,20 @@ from core.style import apply_vero_style
 from core.materials import build_materials_list
 import services.registry as registry
 
-# Configurações Iniciais
+# Configurações de Design e Identidade RR Smart Soluções
 st.set_page_config(page_title="Vero | RR Smart Soluções", layout="wide", initial_sidebar_state="collapsed")
 apply_vero_style()
 
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 
+# Estado para controlar se estamos editando ou vendo o resultado
+if 'view_mode' not in st.session_state:
+    st.session_state.view_mode = "edit"
+
 # --- 1. TELA DE LOGIN ---
 if not st.session_state.logged_in:
-    st.markdown("<br><br><br>", unsafe_allow_html=True)
-    _, col_login, _ = st.columns([1, 1.2, 1])
-    with col_login:
-        st.markdown("<div style='text-align:center;'><h1>VERO</h1><p style='color:#3b82f6; letter-spacing:5px;'>SMART SYSTEMS</p></div>", unsafe_allow_html=True)
-        with st.container(border=True):
-            with st.form("login_form", border=False):
-                email = st.text_input("USUÁRIO")
-                senha = st.text_input("SENHA", type="password")
-                if st.form_submit_button("ENTRAR NO SISTEMA", use_container_width=True):
-                    conn = get_conn()
-                    with conn.cursor() as cur:
-                        cur.execute("SELECT id FROM usuarios WHERE email=%s AND senha=%s", (email, senha))
-                        user = cur.fetchone()
-                    if user:
-                        st.session_state.logged_in = True
-                        st.session_state.user_id = user[0]
-                        st.rerun()
-                    else:
-                        st.error("Credenciais inválidas")
+    # ... (Mantenha seu código de login aqui)
     st.stop()
 
 # --- 2. DADOS DO USUÁRIO ---
@@ -46,103 +32,73 @@ with conn.cursor() as cur:
     cur.execute("SELECT nome_empresa, whatsapp, logo, pagamento_padrao, garantia_padrao, validade_dias FROM config_empresa WHERE usuario_id = %s", (user_id,))
     cfg = cur.fetchone() or ("RR Smart Soluções", "95984187832", None, "A combinar", "90 dias", 7)
 
-# --- 3. MENU SUPERIOR (TABS) ---
+# --- 3. MENU SUPERIOR ---
 tab_inicio, tab_gerador, tab_precos, tab_modelos, tab_config = st.tabs([
     "🏠 Início", "📑 Gerador", "💰 Tabela de Preços", "✍️ Modelos", "⚙️ Configurações"
 ])
 
-# --- ABA: INÍCIO ---
-with tab_inicio:
-    st.markdown("<h1 style='text-align:center; padding: 40px;'>PAINEL ADMINISTRATIVO</h1>", unsafe_allow_html=True)
-    st.markdown(f"<div style='text-align:center;'><h3>Bem-vindo à {cfg[0]}</h3><p>Use o menu superior para navegar.</p></div>", unsafe_allow_html=True)
-
-# --- ABA: GERADOR ---
+# --- ABA: GERADOR (AQUI ESTÁ A CORREÇÃO) ---
 with tab_gerador:
-    st.header("Novo Orçamento")
-    with st.container(border=True):
-        c1, c2 = st.columns(2)
-        cliente = c1.text_input("Nome do Cliente")
-        whatsapp_cli = c2.text_input("WhatsApp Cliente", placeholder="95984...")
-
-        plugins = registry.get_plugins()
-        serv_label = st.selectbox("Tipo de Serviço", list(p.label for p in plugins.values()))
-        plugin = next(p for p in plugins.values() if p.label == serv_label)
-        inputs = plugin.render_fields()
-
-        mapeamento = {"Camera": "CFTV", "Motor": "Motor de Portão", "Cerca": "Cerca/Concertina"}
-        cat_atual = next((v for k, v in mapeamento.items() if k in serv_label), "Geral")
+    # Se estivermos no modo de resultado, mostra os Cards de entrega
+    if st.session_state.view_mode == "result" and 'dados_orcamento' in st.session_state:
+        d = st.session_state.dados_orcamento
         
-        df_extras = pd.read_sql("SELECT chave, nome, valor FROM precos WHERE usuario_id = %s AND (categoria = %s OR categoria = 'Geral')", conn, params=(user_id, cat_atual))
+        st.markdown(f"## ✅ Orçamento Pronto: {d['cliente']}")
         
-        lista_extras = []
-        if not df_extras.empty:
-            st.markdown("---")
-            st.subheader(f"Itens Adicionais ({cat_atual})")
-            opcoes = {f"{r['nome']} (R$ {r['valor']:.2f})": r for _, r in df_extras.iterrows()}
-            selecionados = st.multiselect("Adicionar itens", list(opcoes.keys()))
-            for idx, sel in enumerate(selecionados):
-                q = st.number_input(f"Qtd: {opcoes[sel]['nome']}", min_value=1, key=f"ex_{idx}")
-                lista_extras.append({"info": opcoes[sel], "qtd": q})
+        if st.button("⬅️ CRIAR NOVO ORÇAMENTO"):
+            st.session_state.view_mode = "edit"
+            st.rerun()
 
-        if st.button("FINALIZAR E GERAR", use_container_width=True):
-            res = plugin.compute(conn, inputs)
-            for item in lista_extras:
-                sub = item['qtd'] * item['info']['valor']
-                res['items'].append({'desc': item['info']['nome'], 'qty': item['qtd'], 'unit': item['info']['valor'], 'sub': sub})
-                res['subtotal'] += sub
-            st.session_state.dados_orcamento = {"cliente": cliente, "total": res['subtotal'], "servico": serv_label}
-            st.success(f"Orçamento para {cliente} calculado!")
+        col1, col2, col3 = st.columns(3, gap="large")
 
-# --- ABA: PREÇOS ---
-with tab_precos:
-    st.header("Gestão de Preços")
-    with st.container(border=True):
-        with st.form("f_precos", clear_on_submit=True):
-            c1, c2, c3, c4 = st.columns([1, 2, 1, 1])
-            f_ch = c1.text_input("Chave")
-            f_nm = c2.text_input("Nome")
-            f_vl = c3.number_input("Valor R$", min_value=0.0)
-            f_ct = c4.selectbox("Categoria", ["CFTV", "Cerca/Concertina", "Motor de Portão", "Geral"])
-            if st.form_submit_button("CADASTRAR"):
-                with conn.cursor() as cur:
-                    cur.execute("INSERT INTO precos (chave, nome, valor, usuario_id, categoria) VALUES (%s,%s,%s,%s,%s)", (f_ch, f_nm, f_vl, user_id, f_ct))
-                conn.commit()
+        with col1:
+            with st.container(border=True):
+                st.markdown("### 📄 Proposta PDF")
+                st.markdown(f"<h2 style='color:#3b82f6;'>R$ {d['total']:.2f}</h2>", unsafe_allow_html=True)
+                from core.pdf.summary import render_summary_pdf
+                pdf_io = io.BytesIO()
+                render_summary_pdf(pdf_io, d['payload_pdf'])
+                st.download_button("📥 BAIXAR PDF", pdf_io.getvalue(), f"Orcamento_{d['cliente']}.pdf", use_container_width=True)
+
+        with col2:
+            with st.container(border=True):
+                st.markdown("### 📱 WhatsApp")
+                msg = f"*PROPOSTA: {cfg[0]}*\n\n{d['texto_beneficios']}\n\n*Total: R$ {d['total']:.2f}*"
+                st.text_area("Copiar mensagem:", msg, height=150)
+                wp_url = f"https://wa.me/{d['whatsapp_cliente']}?text={urllib.parse.quote(msg)}"
+                st.markdown(f'<a href="{wp_url}" target="_blank"><button style="width:100%; height:50px; border-radius:18px; background:#25d366; color:white; border:none; font-weight:700;">ENVIAR WHATSAPP</button></a>', unsafe_allow_html=True)
+
+        with col3:
+            with st.container(border=True):
+                st.markdown("### 📦 Materiais")
+                lista = "\n".join([f"• {m['qty']}x {m['desc']}" for m in d['materiais']])
+                st.text_area("Lista técnica:", lista, height=150)
+                st.download_button("💾 SALVAR LISTA .TXT", lista, "pedido.txt", use_container_width=True)
+
+    else:
+        # MODO DE EDIÇÃO (O que você vê agora nas imagens)
+        st.header("Gerador de Orçamentos")
+        with st.container(border=True):
+            # ... (Mantenha os campos de Cliente, WhatsApp, etc)
+            
+            # AO CLICAR NO BOTÃO:
+            if st.button("FINALIZAR E GERAR", use_container_width=True):
+                # 1. Faz os cálculos (como você já tem no código)
+                res = plugin.compute(conn, inputs)
+                # ... (Lógica de somar os extras e buscar o texto de benefícios)
+                
+                # 2. Salva o Payload
+                st.session_state.dados_orcamento = {
+                    "cliente": cliente, "whatsapp_cliente": whatsapp_cli,
+                    "total": res['subtotal'], "materiais": build_materials_list(res),
+                    "texto_beneficios": texto_final,
+                    "payload_pdf": {
+                         "logo_bytes": cfg[2], "empresa": cfg[0], "whatsapp": cfg[1], "cliente": cliente,
+                         "servicos": [res], "total": res['subtotal'], "pagamento": cfg[3], "garantia": cfg[4], "validade_dias": cfg[5]
+                    }
+                }
+                # 3. MUDA O MODO DE VISÃO
+                st.session_state.view_mode = "result"
                 st.rerun()
-    df_lista = pd.read_sql("SELECT chave, nome, valor, categoria FROM precos WHERE usuario_id = %s", conn, params=(user_id,))
-    st.data_editor(df_lista, use_container_width=True)
 
-# --- ABA: MODELOS ---
-with tab_modelos:
-    st.header("Modelos de Texto")
-    with st.container(border=True):
-        sel_s = st.selectbox("Serviço", ["CFTV", "Cerca/Concertina", "Motor de Portão"])
-        with conn.cursor() as cur:
-            cur.execute("SELECT texto_detalhado FROM modelos_texto WHERE usuario_id = %s AND servico_tipo = %s", (user_id, sel_s))
-            txt = cur.fetchone()
-        novo_txt = st.text_area("Descrição", value=txt[0] if txt else "", height=200)
-        if st.button("SALVAR TEXTO"):
-            with conn.cursor() as cur:
-                cur.execute("INSERT INTO modelos_texto (usuario_id, servico_tipo, texto_detalhado) VALUES (%s,%s,%s) ON CONFLICT (usuario_id, servico_tipo) DO UPDATE SET texto_detalhado = EXCLUDED.texto_detalhado", (user_id, sel_s, novo_txt))
-            conn.commit()
-            st.success("Salvo!")
-
-# --- ABA: CONFIGURAÇÕES (RESOLVIDO) ---
-with tab_config:
-    st.header("Configurações da Empresa")
-    with st.container(border=True):
-        with st.form("form_cfg"):
-            c_e1, c_e2 = st.columns(2)
-            n_emp = c_e1.text_input("Nome da Empresa", value=cfg[0])
-            w_emp = c_e2.text_input("WhatsApp", value=cfg[1])
-            c_e3, c_e4 = st.columns(2)
-            p_pad = c_e3.text_input("Pagamento", value=cfg[3])
-            g_pad = c_e4.text_input("Garantia", value=cfg[4])
-            v_pad = st.number_input("Validade (Dias)", value=cfg[5])
-            if st.form_submit_button("SALVAR"):
-                with conn.cursor() as cur:
-                    cur.execute("UPDATE config_empresa SET nome_empresa=%s, whatsapp=%s, pagamento_padrao=%s, garantia_padrao=%s, validade_dias=%s WHERE usuario_id=%s", (n_emp, w_emp, p_pad, g_pad, v_pad, user_id))
-                conn.commit()
-                st.success("Atualizado!")
-    if st.button("SAIR"):
-        st.session_state.logged_in = False
-        st.rerun()
+# --- ABA: PREÇOS, MODELOS E CONFIG (Mantenha como estão) ---
