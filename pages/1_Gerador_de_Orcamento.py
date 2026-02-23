@@ -14,10 +14,11 @@ st.set_page_config(page_title="Vero | Gerador", layout="wide", initial_sidebar_s
 user_id = st.session_state.user_id
 conn = get_conn()
 
-# --- ESTILO ---
+# --- ESTILO VERO ---
 st.markdown("<style>header {visibility: hidden;} footer {visibility: hidden;} [data-testid='stSidebar'] { display: none; } .stApp { background: radial-gradient(circle at 50% 50%, #101a26 0%, #080d12 100%); color: white; }</style>", unsafe_allow_html=True)
 
-if st.button("VOLTAR", key="back_gen"): st.switch_page("app.py")
+if st.button("VOLTAR", key="back_gen"): 
+    st.switch_page("app.py")
 
 # Busca configurações da RR Smart Soluções
 with conn.cursor() as cur:
@@ -39,7 +40,7 @@ plugin = next(p for p in plugins.values() if p.label == servico_label)
 with st.container(border=True):
     inputs = plugin.render_fields()
 
-# Mapeamento para buscar o Modelo de Texto correto
+# Mapeamento para buscar o Modelo de Texto correto baseado na sua Tabela de Preços
 mapeamento = {
     "Camera": "CFTV",
     "Motor": "Motor de Portão",
@@ -53,23 +54,23 @@ for termo, cat_banco in mapeamento.items():
         break
 
 # --- FINALIZAÇÃO ---
-if st.button("FINALIZAR E GERAR PDF", use_container_width=True):
-    # 1. Gera o cálculo base
+if st.button("FINALIZAR E GERAR PDF", use_container_width=True, key="btn_pdf_vero"):
+    # 1. Gera o cálculo base e os materiais
     res = plugin.compute(conn, inputs)
     
-    # 2. Busca o Texto Personalizado (Modelos de Texto)
+    # 2. Busca o Texto que você salvou na página de Modelos
     with conn.cursor() as cur:
         cur.execute("SELECT texto_detalhado FROM modelos_texto WHERE usuario_id = %s AND servico_tipo = %s", (user_id, categoria_atual))
-        txt_modelo = cur.fetchone()
+        txt_personalizado = cur.fetchone()
         
-    # IMPORTANTE: Substituímos a descrição padrão pelo seu texto detalhado
-    if txt_modelo and txt_modelo[0]:
-        # Esta linha garante que o 'core/pdf' leia o seu texto longo
-        res['entrega_detalhada'] = txt_modelo[0] 
-        # Algumas versões do core pedem dentro de 'description' ou 'detalhes'
-        res['description'] = txt_modelo[0]
+    # 3. A MANOBRA: Se houver texto personalizado, ele SUBSTITUI a descrição curta
+    if txt_personalizado and txt_personalizado[0]:
+        # Substituímos o texto padrão que o plugin gera pelo seu texto da aba
+        res['description'] = txt_personalizado[0] 
+        res['details'] = txt_personalizado[0]
+        res['full_description'] = txt_personalizado[0]
     
-    # 3. Chamar o renderizador do core/pdf
+    # 4. Chamar o renderizador do core/pdf
     from core.pdf.summary import render_summary_pdf
     pdf_io = io.BytesIO()
     
@@ -79,12 +80,13 @@ if st.button("FINALIZAR E GERAR PDF", use_container_width=True):
         "whatsapp": cfg[1],
         "cliente": cliente,
         "data_str": datetime.now().strftime("%d/%m/%Y"),
-        "servicos": [res], # O texto longo agora está dentro do objeto 'res'
+        "servicos": [res], # Agora o 'res' carrega o seu texto longo no lugar do curto
         "total": res['subtotal'],
         "pagamento": cfg[3],
         "garantia": cfg[4],
         "validade_dias": cfg[5],
-        "detalhamento_entrega": res.get('entrega_detalhada', "") # Enviamos também como campo solto por segurança
+        # Enviamos redundante para garantir que o core/pdf encontre
+        "detalhamento_entrega": txt_personalizado[0] if txt_personalizado else "" 
     }
     
     render_summary_pdf(pdf_io, payload)
