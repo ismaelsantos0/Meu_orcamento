@@ -3,56 +3,62 @@ import streamlit as st
 def apply_vero_style():
     st.markdown("""
     <style>
-        /* Limpeza de interface */
-        header, footer, [data-testid="stSidebar"] { visibility: hidden; display: none; }
+        /* Esconde apenas os elementos padrão do Streamlit */
+        header {visibility: hidden;}
+        footer {visibility: hidden;}
         
-        /* Fundo Sólido para evitar que elementos sumam */
+        /* Fundo escuro padrão VERO */
         .stApp {
-            background-color: #0e1117;
+            background-color: #0b0f19;
             color: #ffffff;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
 
-        /* Navbar Superior Azul (Estilo Abas) */
+        /* Menu Superior (Abas) - Design Seguro */
         .stTabs [data-baseweb="tab-list"] {
-            background-color: #161b22;
-            border-radius: 10px;
-            padding: 5px;
-            border: 1px solid #30363d;
-            justify-content: center;
+            background-color: #1a2235;
+            padding: 10px;
+            border-radius: 15px;
+            gap: 10px;
+            border: 1px solid #2d3748;
         }
 
         .stTabs [data-baseweb="tab"] {
-            color: #8b949e;
-            font-weight: bold;
+            color: #a0aec0;
+            font-weight: 600;
+            padding: 10px 20px;
+            border-radius: 8px;
+            background-color: transparent;
+            border: none;
         }
 
         .stTabs [aria-selected="true"] {
-            background-color: #238636 !important; /* Verde ou Azul de sua preferência */
-            border-radius: 8px;
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
             color: white !important;
         }
 
-        /* Containers Visíveis (Cards) */
-        div[data-testid="stVerticalBlockBorderWrapper"] {
-            background-color: #161b22 !important;
-            border: 1px solid #30363d !important;
-            border-radius: 15px !important;
-            padding: 20px !important;
-            margin-bottom: 20px !important;
+        /* Caixas de Texto e Inputs Visíveis */
+        .stTextInput input, .stNumberInput input, .stSelectbox div[data-baseweb="select"] {
+            background-color: #1a2235 !important;
+            color: white !important;
+            border: 1px solid #2d3748 !important;
+            border-radius: 8px !important;
         }
 
-        /* Botões visíveis */
+        /* Botão Principal */
         .stButton > button {
-            border-radius: 10px !important;
-            background-color: #21262d !important;
+            background-color: #1a2235 !important;
             color: white !important;
-            border: 1px solid #30363d !important;
-            height: 45px;
+            border: 1px solid #2d3748 !important;
+            border-radius: 10px !important;
+            height: 50px !important;
+            font-weight: bold !important;
+            transition: 0.3s;
         }
 
         .stButton > button:hover {
-            border-color: #8b949e !important;
+            border-color: #3b82f6 !important;
+            background-color: #2563eb !important;
         }
     </style>
     """, unsafe_allow_html=True)
