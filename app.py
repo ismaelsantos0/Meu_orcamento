@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import io
 import urllib.parse
+import time
 
 # 1. CONFIGURAÇÃO OBRIGATÓRIA (Força a barra lateral a nascer fechada)
 st.set_page_config(page_title="Vero | RR Smart Soluções", layout="wide", initial_sidebar_state="collapsed")
@@ -53,7 +54,7 @@ if not st.session_state.logged_in:
 user_id = st.session_state.user_id
 conn = get_conn()
 
-# Busca as configurações. Se não existir no banco, usa os padrões da empresa.
+# Busca as configurações. Se não existir no banco, usa os padrões.
 with conn.cursor() as cur:
     cur.execute("SELECT nome_empresa, whatsapp, logo, pagamento_padrao, garantia_padrao, validade_dias FROM config_empresa WHERE usuario_id = %s", (user_id,))
     cfg = cur.fetchone() or ("RR Smart Soluções", "95984187832", None, "A combinar", "90 dias", 7)
@@ -160,46 +161,70 @@ with tab_gerador:
                     st.rerun()
 
 # ==========================================
-# ABA 2: TABELA DE PREÇOS
+# ABA 2: TABELA DE PREÇOS (INTELIGENTE)
 # ==========================================
 with tab_precos:
     st.header("Gestão de Preços")
     with st.container(border=True):
-        c_p1, c_p2, c_p3, c_p4 = st.columns([1, 2, 1, 1])
-        p_ch = c_p1.text_input("Chave (Ex: CAM_01)", key="k_chave")
-        p_nm = c_p2.text_input("Nome Produto", key="k_nome")
-        p_vl = c_p3.number_input("Preço R$", min_value=0.0, key="k_preco")
-        p_ct = c_p4.selectbox("Categoria", ["CFTV", "Cerca/Concertina", "Motor de Portão", "Geral"], key="k_cat")
+        st.write("Cadastre um novo item ou digite o nome de um já existente para atualizar seu valor.")
         
-        if st.button("CADASTRAR NOVO ITEM", use_container_width=True):
-            if p_ch and p_nm:
+        c_p1, c_p2, c_p3 = st.columns([2, 1, 1])
+        p_nm = c_p1.text_input("Nome do Produto (Ex: Câmera IP 1080p)", key="k_nome")
+        p_vl = c_p2.number_input("Preço R$", min_value=0.0, key="k_preco")
+        p_ct = c_p3.selectbox("Categoria", ["CFTV", "Cerca/Concertina", "Motor de Portão", "Geral"], key="k_cat")
+        
+        if st.button("SALVAR ITEM", use_container_width=True):
+            if p_nm:
                 with conn.cursor() as cur:
-                    cur.execute("INSERT INTO precos (chave, nome, valor, usuario_id, categoria) VALUES (%s,%s,%s,%s,%s)", (p_ch, p_nm, p_vl, user_id, p_ct))
+                    cur.execute("SELECT chave FROM precos WHERE nome = %s AND usuario_id = %s", (p_nm, user_id))
+                    existe_produto = cur.fetchone()
+                    
+                    if existe_produto:
+                        chave_existente = existe_produto[0]
+                        cur.execute("""
+                            UPDATE precos 
+                            SET valor = %s, categoria = %s 
+                            WHERE chave = %s AND usuario_id = %s
+                        """, (p_vl, p_ct, chave_existente, user_id))
+                        msg = f"✅ Preço do item '{p_nm}' atualizado!"
+                    else:
+                        chave_automatica = f"ITEM_{int(time.time())}"
+                        cur.execute("""
+                            INSERT INTO precos (chave, nome, valor, usuario_id, categoria) 
+                            VALUES (%s, %s, %s, %s, %s)
+                        """, (chave_automatica, p_nm, p_vl, user_id, p_ct))
+                        msg = f"✅ Novo item '{p_nm}' adicionado com sucesso!"
+                        
                 conn.commit()
-                st.success("Item adicionado!")
+                st.success(msg)
                 st.rerun()
             else:
-                st.warning("Preencha a chave e o nome do produto.")
+                st.warning("⚠️ Por favor, preencha o nome do produto.")
 
+    st.markdown("---")
     st.markdown("### Itens Cadastrados")
+    
     sub_tabs = st.tabs(["Todos", "CFTV", "Cerca/Concertina", "Motor de Portão", "Geral"])
     cats = [None, "CFTV", "Cerca/Concertina", "Motor de Portão", "Geral"]
     
     for i, t_name in enumerate(sub_tabs):
         with t_name:
-            query = "SELECT chave, nome, valor, categoria FROM precos WHERE usuario_id = %s"
+            query = "SELECT nome as \"Produto\", valor as \"Preço (R$)\", categoria as \"Categoria\" FROM precos WHERE usuario_id = %s"
             params = [user_id]
             if cats[i]:
                 query += " AND categoria = %s"
                 params.append(cats[i])
+            
+            query += " ORDER BY nome ASC"
             df_lista = pd.read_sql(query, conn, params=params)
+            
             if not df_lista.empty:
-                st.data_editor(df_lista, use_container_width=True, key=f"editor_{i}")
+                st.dataframe(df_lista, use_container_width=True, hide_index=True)
             else:
                 st.info("Nenhum item cadastrado nesta categoria.")
 
 # ==========================================
-# ABA 3: MODELOS DE TEXTO (CORRIGIDO PARA EVITAR ERRO DE DB)
+# ABA 3: MODELOS DE TEXTO
 # ==========================================
 with tab_modelos:
     st.header("Modelos de Proposta PDF")
@@ -215,21 +240,18 @@ with tab_modelos:
         
         if st.button("SALVAR MODELO DE TEXTO"):
             with conn.cursor() as cur:
-                # 1. Verifica se já existe
                 cur.execute("SELECT id FROM modelos_texto WHERE usuario_id = %s AND servico_tipo = %s", (user_id, sel_serv))
                 existe_modelo = cur.fetchone()
                 
                 if existe_modelo:
-                    # 2. Se existir, atualiza
                     cur.execute("UPDATE modelos_texto SET texto_detalhado = %s WHERE usuario_id = %s AND servico_tipo = %s", (novo_txt, user_id, sel_serv))
                 else:
-                    # 3. Se não existir, insere
                     cur.execute("INSERT INTO modelos_texto (usuario_id, servico_tipo, texto_detalhado) VALUES (%s, %s, %s)", (user_id, sel_serv, novo_txt))
             conn.commit()
             st.success("Texto salvo com sucesso!")
 
 # ==========================================
-# ABA 4: CONFIGURAÇÕES (CORRIGIDO PARA EVITAR ERRO DE DB)
+# ABA 4: CONFIGURAÇÕES E MANUTENÇÃO
 # ==========================================
 with tab_config:
     st.header("Configurações da Empresa")
@@ -252,19 +274,16 @@ with tab_config:
             logo_bytes = logo_file.read() if logo_file else cfg[2]
             
             with conn.cursor() as cur:
-                # 1. Verifica se já existe uma configuração
                 cur.execute("SELECT id FROM config_empresa WHERE usuario_id = %s", (user_id,))
                 existe_cfg = cur.fetchone()
                 
                 if existe_cfg:
-                    # 2. Se existir, faz o UPDATE
                     cur.execute("""
                         UPDATE config_empresa 
                         SET nome_empresa=%s, whatsapp=%s, logo=%s, pagamento_padrao=%s, garantia_padrao=%s, validade_dias=%s 
                         WHERE usuario_id=%s
                     """, (n_emp, w_emp, logo_bytes, p_pad, g_pad, v_pad, user_id))
                 else:
-                    # 3. Se não existir, faz o INSERT
                     cur.execute("""
                         INSERT INTO config_empresa 
                         (usuario_id, nome_empresa, whatsapp, logo, pagamento_padrao, garantia_padrao, validade_dias) 
@@ -275,6 +294,26 @@ with tab_config:
             st.success("Configurações atualizadas com sucesso!")
             st.rerun()
                 
+    st.markdown("---")
+    st.subheader("🛠️ Manutenção do Sistema")
+    st.write("Clique abaixo uma única vez para padronizar as chaves antigas do banco de dados (remover nomes como 'CAM_01').")
+    
+    if st.button("Padronizar Chaves Antigas", use_container_width=True):
+        with conn.cursor() as cur:
+            cur.execute("SELECT chave FROM precos WHERE usuario_id = %s", (user_id,))
+            itens_antigos = cur.fetchall()
+            
+            for index, (chave_antiga,) in enumerate(itens_antigos, start=1):
+                nova_chave = f"Item_{index}_{int(time.time())}" 
+                cur.execute("""
+                    UPDATE precos 
+                    SET chave = %s 
+                    WHERE chave = %s AND usuario_id = %s
+                """, (nova_chave, chave_antiga, user_id))
+            conn.commit()
+        st.success("✅ Todas as chaves antigas foram atualizadas e padronizadas com sucesso!")
+        st.rerun()
+
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("🔴 SAIR DO SISTEMA", use_container_width=True):
         st.session_state.logged_in = False
