@@ -54,7 +54,7 @@ if not st.session_state.logged_in:
 user_id = st.session_state.user_id
 conn = get_conn()
 
-# Busca as configurações. Se não existir no banco, usa os padrões.
+# Busca as configurações. Se não existir na base de dados, usa os padrões.
 with conn.cursor() as cur:
     cur.execute("SELECT nome_empresa, whatsapp, logo, pagamento_padrao, garantia_padrao, validade_dias FROM config_empresa WHERE usuario_id = %s", (user_id,))
     cfg = cur.fetchone() or ("RR Smart Soluções", "95984187832", None, "A combinar", "90 dias", 7)
@@ -161,12 +161,14 @@ with tab_gerador:
                     st.rerun()
 
 # ==========================================
-# ABA 2: TABELA DE PREÇOS (INTELIGENTE)
+# ABA 2: TABELA DE PREÇOS (COM EXCLUSÃO)
 # ==========================================
 with tab_precos:
     st.header("Gestão de Preços")
+    
+    # 1. BLOCO DE ADICIONAR / ATUALIZAR
     with st.container(border=True):
-        st.write("Cadastre um novo item ou digite o nome de um já existente para atualizar seu valor.")
+        st.write("Cadastre um novo item ou digite o nome de um já existente para atualizar o seu valor.")
         
         c_p1, c_p2, c_p3 = st.columns([2, 1, 1])
         p_nm = c_p1.text_input("Nome do Produto (Ex: Câmera IP 1080p)", key="k_nome")
@@ -201,8 +203,33 @@ with tab_precos:
             else:
                 st.warning("⚠️ Por favor, preencha o nome do produto.")
 
+    # 2. BLOCO DE EXCLUIR ITEM (Escondido num expansor por segurança)
+    with st.expander("🗑️ Excluir um Produto"):
+        st.write("Selecione um produto abaixo para o remover permanentemente da base de dados.")
+        
+        with conn.cursor() as cur:
+            cur.execute("SELECT nome FROM precos WHERE usuario_id = %s ORDER BY nome ASC", (user_id,))
+            lista_produtos = [row[0] for row in cur.fetchall()]
+        
+        if lista_produtos:
+            col_del1, col_del2 = st.columns([3, 1])
+            item_para_excluir = col_del1.selectbox("Produto a excluir", [""] + lista_produtos)
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            if col_del2.button("❌ EXCLUIR", use_container_width=True):
+                if item_para_excluir:
+                    with conn.cursor() as cur:
+                        cur.execute("DELETE FROM precos WHERE nome = %s AND usuario_id = %s", (item_para_excluir, user_id))
+                    conn.commit()
+                    st.success(f"O produto '{item_para_excluir}' foi removido com sucesso!")
+                    st.rerun()
+                else:
+                    st.warning("Selecione um produto na lista primeiro.")
+        else:
+            st.info("Não há produtos registados para excluir.")
+
     st.markdown("---")
-    st.markdown("### Itens Cadastrados")
+    st.markdown("### Itens Registados")
     
     sub_tabs = st.tabs(["Todos", "CFTV", "Cerca/Concertina", "Motor de Portão", "Geral"])
     cats = [None, "CFTV", "Cerca/Concertina", "Motor de Portão", "Geral"]
@@ -221,7 +248,7 @@ with tab_precos:
             if not df_lista.empty:
                 st.dataframe(df_lista, use_container_width=True, hide_index=True)
             else:
-                st.info("Nenhum item cadastrado nesta categoria.")
+                st.info("Nenhum item registado nesta categoria.")
 
 # ==========================================
 # ABA 3: MODELOS DE TEXTO
@@ -296,7 +323,7 @@ with tab_config:
                 
     st.markdown("---")
     st.subheader("🛠️ Manutenção do Sistema")
-    st.write("Clique abaixo uma única vez para padronizar as chaves antigas do banco de dados (remover nomes como 'CAM_01').")
+    st.write("Clique abaixo uma única vez para padronizar as chaves antigas da base de dados (remover nomes como 'CAM_01').")
     
     if st.button("Padronizar Chaves Antigas", use_container_width=True):
         with conn.cursor() as cur:
