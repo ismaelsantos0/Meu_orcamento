@@ -1,7 +1,7 @@
 import streamlit as st
 import hashlib
 
-# 1. CONFIGURAÇÃO OBRIGATÓRIA
+# 1. CONFIGURAÇÃO OBRIGATÓRIA (Nome genérico do SaaS)
 st.set_page_config(page_title="VERO Smart Systems", layout="wide", initial_sidebar_state="collapsed")
 
 from core.db import get_conn
@@ -40,7 +40,6 @@ if not st.session_state.logged_in:
                 
                 if st.button("ENTRAR NO SISTEMA", use_container_width=True):
                     if email_login and senha_login:
-                        # Sempre compara usando a versão criptografada da senha digitada
                         senha_hash = hashlib.sha256(senha_login.encode()).hexdigest()
                         
                         conn = get_conn()
@@ -57,8 +56,7 @@ if not st.session_state.logged_in:
                     else:
                         st.warning("Preencha o e-mail e a senha.")
                 
-                # Link para recuperação de senha
-                st.markdown("<div style='text-align:center; margin-top:10px;'><a href='https://wa.me/55SEUNUMEROAQUI?text=Olá,%20esqueci%20minha%20senha%20na%20VERO.' target='_blank' style='color:#a0aec0; text-decoration:none; font-size:14px;'>Esqueceu a senha? Fale com o Suporte VERO</a></div>", unsafe_allow_html=True)
+                st.markdown("<div style='text-align:center; margin-top:10px;'><a href='https://wa.me/55SEUNUMEROAQUI?text=Olá,%20esqueci%20minha%20senha%20na%20VERO.' target='_blank' style='color:#a0aec0; text-decoration:none; font-size:14px;'>Esqueceu a senha? Fale com o Suporte</a></div>", unsafe_allow_html=True)
 
         # --- ABA DE CADASTRO PARA NOVOS CLIENTES ---
         with tab_cadastro:
@@ -79,18 +77,28 @@ if not st.session_state.logged_in:
                     elif nova_senha != confirma_senha:
                         st.error("As senhas digitadas não coincidem.")
                     else:
-                        # Criptografa a senha de novos clientes antes de salvar
                         senha_hash = hashlib.sha256(nova_senha.encode()).hexdigest()
                         
                         conn = get_conn()
                         try:
                             with conn.cursor() as cur:
+                                # 1. Cria o usuário e pega o ID recém-criado
                                 cur.execute("""
                                     INSERT INTO usuarios (nome, email, whatsapp, senha) 
                                     VALUES (%s, %s, %s, %s) RETURNING id
                                 """, (novo_nome, novo_email, novo_whats, senha_hash))
+                                
+                                novo_id = cur.fetchone()[0]
+                                
+                                # 2. Usa os dados do cadastro para preencher as configurações iniciais da empresa
+                                cur.execute("""
+                                    INSERT INTO config_empresa 
+                                    (usuario_id, nome_empresa, whatsapp, pagamento_padrao, garantia_padrao, validade_dias) 
+                                    VALUES (%s, %s, %s, 'A combinar', '90 dias', 7)
+                                """, (novo_id, novo_nome, novo_whats))
+                                
                             conn.commit()
-                            st.success("🎉 Conta criada com sucesso! Mude para a aba 'Entrar' e faça seu login.")
+                            st.success("🎉 Conta criada! Mude para a aba 'Entrar' e faça seu login.")
                         except Exception as e:
                             conn.rollback()
                             if "unique constraint" in str(e).lower() or "duplicate key" in str(e).lower():
@@ -107,7 +115,8 @@ conn = get_conn()
 
 with conn.cursor() as cur:
     cur.execute("SELECT nome_empresa, whatsapp, logo, pagamento_padrao, garantia_padrao, validade_dias FROM config_empresa WHERE usuario_id = %s", (user_id,))
-    cfg = cur.fetchone() or ("Sua Empresa", "99999999999", None, "A combinar", "90 dias", 7)
+    # Se por acaso der falha, os valores padrão genéricos assumem o lugar
+    cfg = cur.fetchone() or ("Sua Empresa", "Contato", None, "A combinar", "90 dias", 7)
 
 # 6. MENU SUPERIOR E CHAMADA DAS FUNÇÕES
 tab_historico, tab_gerador, tab_precos, tab_modelos, tab_config = st.tabs([
