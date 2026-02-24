@@ -1,7 +1,8 @@
 import streamlit as st
 import hashlib
+import re  # Importação para limpar e validar números
 
-# 1. CONFIGURAÇÃO OBRIGATÓRIA (Nome genérico do SaaS)
+# 1. CONFIGURAÇÃO OBRIGATÓRIA
 st.set_page_config(page_title="VERO Smart Systems", layout="wide", initial_sidebar_state="collapsed")
 
 from core.db import get_conn
@@ -56,7 +57,7 @@ if not st.session_state.logged_in:
                     else:
                         st.warning("Preencha o e-mail e a senha.")
                 
-                st.markdown("<div style='text-align:center; margin-top:10px;'><a href='https://wa.me/55SEUNUMEROAQUI?text=Olá,%20esqueci%20minha%20senha%20na%20VERO.' target='_blank' style='color:#a0aec0; text-decoration:none; font-size:14px;'>Esqueceu a senha? Fale com o Suporte</a></div>", unsafe_allow_html=True)
+                st.markdown("<div style='text-align:center; margin-top:10px;'><a href='https://wa.me/5595984187832?text=Olá,%20esqueci%20minha%20senha%20na%20VERO.' target='_blank' style='color:#a0aec0; text-decoration:none; font-size:14px;'>Esqueceu a senha? Fale com o Suporte</a></div>", unsafe_allow_html=True)
 
         # --- ABA DE CADASTRO PARA NOVOS CLIENTES ---
         with tab_cadastro:
@@ -65,40 +66,45 @@ if not st.session_state.logged_in:
                 
                 novo_nome = st.text_input("Nome da Empresa ou Instalador")
                 novo_email = st.text_input("E-mail (Será seu login)")
-                novo_whats = st.text_input("WhatsApp (Ex: 95984...)")
+                novo_whats = st.text_input("WhatsApp com DDD (Ex: 95 98418...)")
                 
                 col_s1, col_s2 = st.columns(2)
                 nova_senha = col_s1.text_input("Crie uma Senha", type="password")
                 confirma_senha = col_s2.text_input("Confirme a Senha", type="password")
                 
                 if st.button("CRIAR MINHA CONTA", use_container_width=True):
-                    if not novo_nome or not novo_email or not novo_whats or not nova_senha:
-                        st.warning("Por favor, preencha todos os campos.")
+                    # Limpeza de dados para validação rigorosa
+                    nome_limpo = novo_nome.strip()
+                    email_limpo = novo_email.strip()
+                    whats_limpo = re.sub(r'\D', '', novo_whats)  # Arranca tudo que não for número
+                    
+                    if not nome_limpo or not email_limpo or not whats_limpo or not nova_senha:
+                        st.warning("⚠️ Por favor, preencha todos os campos obrigatoriamente.")
+                    elif len(whats_limpo) < 10:
+                        st.warning("⚠️ Insira um número de WhatsApp válido com o DDD.")
                     elif nova_senha != confirma_senha:
-                        st.error("As senhas digitadas não coincidem.")
+                        st.error("⚠️ As senhas digitadas não coincidem.")
                     else:
                         senha_hash = hashlib.sha256(nova_senha.encode()).hexdigest()
                         
                         conn = get_conn()
                         try:
                             with conn.cursor() as cur:
-                                # 1. Cria o usuário e pega o ID recém-criado
                                 cur.execute("""
                                     INSERT INTO usuarios (nome, email, whatsapp, senha) 
                                     VALUES (%s, %s, %s, %s) RETURNING id
-                                """, (novo_nome, novo_email, novo_whats, senha_hash))
+                                """, (nome_limpo, email_limpo, whats_limpo, senha_hash))
                                 
                                 novo_id = cur.fetchone()[0]
                                 
-                                # 2. Usa os dados do cadastro para preencher as configurações iniciais da empresa
                                 cur.execute("""
                                     INSERT INTO config_empresa 
                                     (usuario_id, nome_empresa, whatsapp, pagamento_padrao, garantia_padrao, validade_dias) 
                                     VALUES (%s, %s, %s, 'A combinar', '90 dias', 7)
-                                """, (novo_id, novo_nome, novo_whats))
+                                """, (novo_id, nome_limpo, whats_limpo))
                                 
                             conn.commit()
-                            st.success("🎉 Conta criada! Mude para a aba 'Entrar' e faça seu login.")
+                            st.success("🎉 Conta criada com sucesso! Mude para a aba 'Entrar' e faça seu login.")
                         except Exception as e:
                             conn.rollback()
                             if "unique constraint" in str(e).lower() or "duplicate key" in str(e).lower():
@@ -115,7 +121,6 @@ conn = get_conn()
 
 with conn.cursor() as cur:
     cur.execute("SELECT nome_empresa, whatsapp, logo, pagamento_padrao, garantia_padrao, validade_dias FROM config_empresa WHERE usuario_id = %s", (user_id,))
-    # Se por acaso der falha, os valores padrão genéricos assumem o lugar
     cfg = cur.fetchone() or ("Sua Empresa", "Contato", None, "A combinar", "90 dias", 7)
 
 # 6. MENU SUPERIOR E CHAMADA DAS FUNÇÕES
