@@ -21,54 +21,9 @@ if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 if 'orcamento_pronto' not in st.session_state: st.session_state.orcamento_pronto = False
 
 # ==========================================
-# BOTÃO TEMPORÁRIO DE MIGRAÇÃO (NÃO APAGA NADA)
+# 4. TELA DE LOGIN E CADASTRO (SaaS VERO)
 # ==========================================
 if not st.session_state.logged_in:
-    with st.expander("🛠️ Atualização de Segurança (Clique 1x para migrar sua conta)", expanded=True):
-        st.write("Atualiza sua conta existente para o padrão VERO, criptografa a senha e **mantém todos os seus preços e orçamentos.**")
-        if st.button("Executar Migração do Banco de Dados", use_container_width=True):
-            conn = get_conn()
-            conn.autocommit = True  # Necessário para alterar a estrutura da tabela
-            try:
-                with conn.cursor() as cur:
-                    # 1. Adiciona as colunas novas sem apagar a tabela
-                    cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS nome VARCHAR(255) DEFAULT 'RR Smart Soluções';")
-                    cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS whatsapp VARCHAR(50);")
-                    cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP;")
-                    
-                    # 2. Preenche os dados pendentes para não dar erro
-                    cur.execute("UPDATE usuarios SET whatsapp = '95984187832' WHERE whatsapp IS NULL;")
-                    
-                    # 3. Criptografa as senhas antigas que estão normais no banco
-                    cur.execute("SELECT id, senha FROM usuarios")
-                    users = cur.fetchall()
-                    for uid, pwd in users:
-                        if len(pwd) != 64:  # Se a senha não tiver 64 caracteres, ainda não foi criptografada
-                            senha_hash = hashlib.sha256(pwd.encode()).hexdigest()
-                            cur.execute("UPDATE usuarios SET senha = %s WHERE id = %s", (senha_hash, uid))
-                            
-                    # 4. Adiciona as travas de segurança únicas
-                    cur.execute("""
-                        DO $$
-                        BEGIN
-                            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'usuarios_email_key') THEN
-                                ALTER TABLE usuarios ADD CONSTRAINT usuarios_email_key UNIQUE (email);
-                            END IF;
-                            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'usuarios_whatsapp_key') THEN
-                                ALTER TABLE usuarios ADD CONSTRAINT usuarios_whatsapp_key UNIQUE (whatsapp);
-                            END IF;
-                        END
-                        $$;
-                    """)
-                st.success("✅ Migração concluída! Seu banco de dados está protegido com criptografia e os seus preços foram 100% mantidos.")
-            except Exception as e:
-                st.error(f"Erro na migração: {e}")
-            finally:
-                conn.autocommit = False
-
-    # ==========================================
-    # 4. TELA DE LOGIN E CADASTRO (SaaS VERO)
-    # ==========================================
     st.markdown("<br><br>", unsafe_allow_html=True)
     _, col_login, _ = st.columns([1, 1.2, 1])
     
@@ -102,7 +57,8 @@ if not st.session_state.logged_in:
                     else:
                         st.warning("Preencha o e-mail e a senha.")
                 
-                st.markdown("<div style='text-align:center; margin-top:10px;'><a href='#' style='color:#a0aec0; text-decoration:none; font-size:14px;'>Esqueceu a senha? Fale com o Suporte VERO</a></div>", unsafe_allow_html=True)
+                # Link para recuperação de senha
+                st.markdown("<div style='text-align:center; margin-top:10px;'><a href='https://wa.me/55SEUNUMEROAQUI?text=Olá,%20esqueci%20minha%20senha%20na%20VERO.' target='_blank' style='color:#a0aec0; text-decoration:none; font-size:14px;'>Esqueceu a senha? Fale com o Suporte VERO</a></div>", unsafe_allow_html=True)
 
         # --- ABA DE CADASTRO PARA NOVOS CLIENTES ---
         with tab_cadastro:
