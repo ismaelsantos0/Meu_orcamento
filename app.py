@@ -7,6 +7,7 @@ from core.db import get_conn
 from core.style import apply_vero_style
 
 # 2. IMPORTAÇÃO DAS ABAS MODULARIZADAS
+from tabs.historico import render_historico
 from tabs.gerador import render_gerador
 from tabs.precos import render_precos
 from tabs.modelos import render_modelos
@@ -51,9 +52,12 @@ with conn.cursor() as cur:
     cfg = cur.fetchone() or ("RR Smart Soluções", "95984187832", None, "A combinar", "90 dias", 7)
 
 # 6. MENU SUPERIOR E CHAMADA DAS FUNÇÕES
-tab_gerador, tab_precos, tab_modelos, tab_config = st.tabs([
-    "📑 Gerador de Orçamento", "💰 Tabela de Preços", "✍️ Modelos de Texto", "⚙️ Configurações"
+tab_historico, tab_gerador, tab_precos, tab_modelos, tab_config = st.tabs([
+    "📊 Histórico & Funil", "📑 Gerador de Orçamento", "💰 Tabela de Preços", "✍️ Modelos de Texto", "⚙️ Configurações"
 ])
+
+with tab_historico:
+    render_historico(conn, user_id)
 
 with tab_gerador:
     render_gerador(conn, user_id, cfg)
