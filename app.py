@@ -1,7 +1,8 @@
 import streamlit as st
+import hashlib
 
 # 1. CONFIGURAÇÃO OBRIGATÓRIA
-st.set_page_config(page_title="Vero | RR Smart Soluções", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="VERO Smart Systems", layout="wide", initial_sidebar_state="collapsed")
 
 from core.db import get_conn
 from core.style import apply_vero_style
@@ -19,37 +20,138 @@ apply_vero_style()
 if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 if 'orcamento_pronto' not in st.session_state: st.session_state.orcamento_pronto = False
 
-# 4. TELA DE LOGIN
+# ==========================================
+# BOTÃO TEMPORÁRIO DE MIGRAÇÃO (NÃO APAGA NADA)
+# ==========================================
 if not st.session_state.logged_in:
-    st.markdown("<br><br><br>", unsafe_allow_html=True)
+    with st.expander("🛠️ Atualização de Segurança (Clique 1x para migrar sua conta)", expanded=True):
+        st.write("Atualiza sua conta existente para o padrão VERO, criptografa a senha e **mantém todos os seus preços e orçamentos.**")
+        if st.button("Executar Migração do Banco de Dados", use_container_width=True):
+            conn = get_conn()
+            conn.autocommit = True  # Necessário para alterar a estrutura da tabela
+            try:
+                with conn.cursor() as cur:
+                    # 1. Adiciona as colunas novas sem apagar a tabela
+                    cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS nome VARCHAR(255) DEFAULT 'RR Smart Soluções';")
+                    cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS whatsapp VARCHAR(50);")
+                    cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP;")
+                    
+                    # 2. Preenche os dados pendentes para não dar erro
+                    cur.execute("UPDATE usuarios SET whatsapp = '95984187832' WHERE whatsapp IS NULL;")
+                    
+                    # 3. Criptografa as senhas antigas que estão normais no banco
+                    cur.execute("SELECT id, senha FROM usuarios")
+                    users = cur.fetchall()
+                    for uid, pwd in users:
+                        if len(pwd) != 64:  # Se a senha não tiver 64 caracteres, ainda não foi criptografada
+                            senha_hash = hashlib.sha256(pwd.encode()).hexdigest()
+                            cur.execute("UPDATE usuarios SET senha = %s WHERE id = %s", (senha_hash, uid))
+                            
+                    # 4. Adiciona as travas de segurança únicas
+                    cur.execute("""
+                        DO $$
+                        BEGIN
+                            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'usuarios_email_key') THEN
+                                ALTER TABLE usuarios ADD CONSTRAINT usuarios_email_key UNIQUE (email);
+                            END IF;
+                            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'usuarios_whatsapp_key') THEN
+                                ALTER TABLE usuarios ADD CONSTRAINT usuarios_whatsapp_key UNIQUE (whatsapp);
+                            END IF;
+                        END
+                        $$;
+                    """)
+                st.success("✅ Migração concluída! Seu banco de dados está protegido com criptografia e os seus preços foram 100% mantidos.")
+            except Exception as e:
+                st.error(f"Erro na migração: {e}")
+            finally:
+                conn.autocommit = False
+
+    # ==========================================
+    # 4. TELA DE LOGIN E CADASTRO (SaaS VERO)
+    # ==========================================
+    st.markdown("<br><br>", unsafe_allow_html=True)
     _, col_login, _ = st.columns([1, 1.2, 1])
+    
     with col_login:
-        st.markdown("<div style='text-align:center;'><h1>VERO</h1><p style='color:#3b82f6; letter-spacing:5px;'>SMART SYSTEMS</p></div>", unsafe_allow_html=True)
-        with st.container(border=True):
-            with st.form("login_form"):
-                email = st.text_input("Usuário", placeholder="E-mail administrador")
-                senha = st.text_input("Senha", type="password")
+        st.markdown("<div style='text-align:center;'><h1>VERO</h1><p style='color:#3b82f6; letter-spacing:5px;'>SMART SYSTEMS</p></div><br>", unsafe_allow_html=True)
+        
+        tab_login, tab_cadastro = st.tabs(["🔐 Entrar", "📝 Criar Conta"])
+        
+        # --- ABA DE LOGIN ---
+        with tab_login:
+            with st.container(border=True):
+                email_login = st.text_input("E-mail", key="log_email")
+                senha_login = st.text_input("Senha", type="password", key="log_senha")
                 
-                if st.form_submit_button("ENTRAR NO SISTEMA", use_container_width=True):
-                    conn = get_conn()
-                    with conn.cursor() as cur:
-                        cur.execute("SELECT id FROM usuarios WHERE email=%s AND senha=%s", (email, senha))
-                        user = cur.fetchone()
-                    if user:
-                        st.session_state.logged_in = True
-                        st.session_state.user_id = user[0]
-                        st.rerun()
+                if st.button("ENTRAR NO SISTEMA", use_container_width=True):
+                    if email_login and senha_login:
+                        # Sempre compara usando a versão criptografada da senha digitada
+                        senha_hash = hashlib.sha256(senha_login.encode()).hexdigest()
+                        
+                        conn = get_conn()
+                        with conn.cursor() as cur:
+                            cur.execute("SELECT id FROM usuarios WHERE email=%s AND senha=%s", (email_login, senha_hash))
+                            user = cur.fetchone()
+                            
+                        if user:
+                            st.session_state.logged_in = True
+                            st.session_state.user_id = user[0]
+                            st.rerun()
+                        else:
+                            st.error("E-mail ou senha inválidos.")
                     else:
-                        st.error("Credenciais inválidas")
+                        st.warning("Preencha o e-mail e a senha.")
+                
+                st.markdown("<div style='text-align:center; margin-top:10px;'><a href='#' style='color:#a0aec0; text-decoration:none; font-size:14px;'>Esqueceu a senha? Fale com o Suporte VERO</a></div>", unsafe_allow_html=True)
+
+        # --- ABA DE CADASTRO PARA NOVOS CLIENTES ---
+        with tab_cadastro:
+            with st.container(border=True):
+                st.write("Junte-se à VERO e automatize seus orçamentos.")
+                
+                novo_nome = st.text_input("Nome da Empresa ou Instalador")
+                novo_email = st.text_input("E-mail (Será seu login)")
+                novo_whats = st.text_input("WhatsApp (Ex: 95984...)")
+                
+                col_s1, col_s2 = st.columns(2)
+                nova_senha = col_s1.text_input("Crie uma Senha", type="password")
+                confirma_senha = col_s2.text_input("Confirme a Senha", type="password")
+                
+                if st.button("CRIAR MINHA CONTA", use_container_width=True):
+                    if not novo_nome or not novo_email or not novo_whats or not nova_senha:
+                        st.warning("Por favor, preencha todos os campos.")
+                    elif nova_senha != confirma_senha:
+                        st.error("As senhas digitadas não coincidem.")
+                    else:
+                        # Criptografa a senha de novos clientes antes de salvar
+                        senha_hash = hashlib.sha256(nova_senha.encode()).hexdigest()
+                        
+                        conn = get_conn()
+                        try:
+                            with conn.cursor() as cur:
+                                cur.execute("""
+                                    INSERT INTO usuarios (nome, email, whatsapp, senha) 
+                                    VALUES (%s, %s, %s, %s) RETURNING id
+                                """, (novo_nome, novo_email, novo_whats, senha_hash))
+                            conn.commit()
+                            st.success("🎉 Conta criada com sucesso! Mude para a aba 'Entrar' e faça seu login.")
+                        except Exception as e:
+                            conn.rollback()
+                            if "unique constraint" in str(e).lower() or "duplicate key" in str(e).lower():
+                                st.error("⚠️ Este E-mail ou WhatsApp já está cadastrado na VERO.")
+                            else:
+                                st.error(f"Erro no banco de dados: {e}")
     st.stop()
 
+# ==========================================
 # 5. CARREGAMENTO DE DADOS PRINCIPAIS
+# ==========================================
 user_id = st.session_state.user_id
 conn = get_conn()
 
 with conn.cursor() as cur:
     cur.execute("SELECT nome_empresa, whatsapp, logo, pagamento_padrao, garantia_padrao, validade_dias FROM config_empresa WHERE usuario_id = %s", (user_id,))
-    cfg = cur.fetchone() or ("RR Smart Soluções", "95984187832", None, "A combinar", "90 dias", 7)
+    cfg = cur.fetchone() or ("Sua Empresa", "99999999999", None, "A combinar", "90 dias", 7)
 
 # 6. MENU SUPERIOR E CHAMADA DAS FUNÇÕES
 tab_historico, tab_gerador, tab_precos, tab_modelos, tab_config = st.tabs([
