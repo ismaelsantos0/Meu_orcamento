@@ -53,7 +53,6 @@ def render_gerador(conn, user_id, cfg):
             
             inputs = plugin.render_fields()
             
-            # Mapeamento inteligente de categorias
             cat_map = {"Camera": "CFTV", "Motor": "Motor de Portão", "Cerca": "Cerca/Concertina", "Concertina": "Cerca/Concertina"}
             cat_match = next((v for k, v in cat_map.items() if k in servico_label), "Geral")
             
@@ -84,6 +83,19 @@ def render_gerador(conn, user_id, cfg):
                         t_row = cur.fetchone()
                     texto_pdf = t_row[0] if t_row else "Instalação profissional padrão."
                     res['summary_client'] = texto_pdf
+                    
+                    # === SALVA O ORÇAMENTO NO HISTÓRICO ANTES DE EXIBIR O PDF ===
+                    try:
+                        with conn.cursor() as cur:
+                            cur.execute("""
+                                INSERT INTO historico_orcamentos (usuario_id, cliente, valor, status) 
+                                VALUES (%s, %s, %s, 'Pendente')
+                            """, (user_id, cliente, res['subtotal']))
+                        conn.commit()
+                    except Exception as e:
+                        # Se a tabela não existir, ele ignora silenciosamente para não travar o PDF
+                        conn.rollback() 
+                    # ==============================================================
                     
                     st.session_state.dados_finais = {
                         "cliente": cliente, 
