@@ -5,6 +5,12 @@ import time
 def render_precos(conn, user_id):
     st.header("Gestão de Preços")
     
+    # === NOVIDADE: Exibe a mensagem de sucesso que ficou guardada na memória ===
+    if 'msg_sucesso' in st.session_state:
+        st.success(st.session_state.msg_sucesso)
+        # Apaga a mensagem da memória para não aparecer de novo no próximo clique
+        del st.session_state.msg_sucesso 
+    
     # 1. BLOCO DE ADICIONAR / ATUALIZAR
     with st.container(border=True):
         st.write("Cadastre um novo item ou digite o nome de um já existente para atualizar o seu valor.")
@@ -27,17 +33,18 @@ def render_precos(conn, user_id):
                             SET valor = %s, categoria = %s 
                             WHERE chave = %s AND usuario_id = %s
                         """, (p_vl, p_ct, chave_existente, user_id))
-                        msg = f"✅ Preço do item '{p_nm}' atualizado!"
+                        msg = f"✅ Preço do item '{p_nm}' atualizado com sucesso!"
                     else:
                         chave_automatica = f"ITEM_{int(time.time())}"
                         cur.execute("""
                             INSERT INTO precos (chave, nome, valor, usuario_id, categoria) 
                             VALUES (%s, %s, %s, %s, %s)
                         """, (chave_automatica, p_nm, p_vl, user_id, p_ct))
-                        msg = f"✅ Novo item '{p_nm}' adicionado com sucesso!"
+                        msg = f"✅ Novo item '{p_nm}' cadastrado com sucesso!"
                         
                 conn.commit()
-                st.success(msg)
+                # Guarda a mensagem na memória e força o recarregamento
+                st.session_state.msg_sucesso = msg
                 st.rerun()
             else:
                 st.warning("⚠️ Por favor, preencha o nome do produto.")
@@ -60,7 +67,8 @@ def render_precos(conn, user_id):
                     with conn.cursor() as cur:
                         cur.execute("DELETE FROM precos WHERE nome = %s AND usuario_id = %s", (item_para_excluir, user_id))
                     conn.commit()
-                    st.success(f"O produto '{item_para_excluir}' foi removido com sucesso!")
+                    # Guarda a mensagem na memória e força o recarregamento
+                    st.session_state.msg_sucesso = f"🗑️ O produto '{item_para_excluir}' foi excluído com sucesso!"
                     st.rerun()
                 else:
                     st.warning("Selecione um produto na lista primeiro.")
