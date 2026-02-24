@@ -23,27 +23,6 @@ def rodar_automacoes_funil(conn, user_id):
 def render_historico(conn, user_id):
     st.header("📊 Funil de Vendas e Histórico")
     
-    # 1. BOTÃO DE SETUP (CRIA A TABELA NO BANCO)
-    with st.expander("🛠️ Setup Inicial (Clique apenas na primeira vez)", expanded=False):
-        st.write("Cria a estrutura no banco de dados para salvar os orçamentos.")
-        if st.button("Criar Tabela de Histórico", use_container_width=True):
-            with conn.cursor() as cur:
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS historico_orcamentos (
-                        id SERIAL PRIMARY KEY,
-                        usuario_id INTEGER,
-                        cliente VARCHAR(255),
-                        valor NUMERIC(10, 2),
-                        status VARCHAR(50) DEFAULT 'Pendente',
-                        data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    );
-                """)
-            conn.commit()
-            st.success("Tabela criada com sucesso! O histórico já está funcionando.")
-            st.rerun()
-
-    # Tenta carregar os dados. Se a tabela não existir, avisa o usuário.
     try:
         # Roda as regras de 10 dias de forma invisível
         rodar_automacoes_funil(conn, user_id)
@@ -57,7 +36,7 @@ def render_historico(conn, user_id):
             ORDER BY data_criacao DESC
         """, conn, params=(user_id,))
     except Exception as e:
-        st.warning("⚠️ O sistema não encontrou a tabela de histórico. Abra o menu 'Setup Inicial' acima e crie a tabela.")
+        st.error("⚠️ Ocorreu um erro ao carregar o histórico. Verifique a conexão com o banco de dados.")
         return
     
     if df.empty:
@@ -94,7 +73,7 @@ def render_historico(conn, user_id):
                     WHERE id = %s AND usuario_id = %s
                 """, (novo_status, id_orc, user_id))
             conn.commit()
-            st.success("Status atualizado!")
+            st.success("Status atualizado com sucesso!")
             st.rerun()
 
     # --- TABELA DE VISUALIZAÇÃO GERAL ---
