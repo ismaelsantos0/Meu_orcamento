@@ -98,7 +98,6 @@ def render_gerador(conn, user_id, cfg):
         with col_r1:
             with st.container(border=True):
                 st.subheader("📄 Proposta Formal")
-                # A LINHA QUE DEU ERRO FOI ESTA ABAIXO. ELA ESTÁ CORRIGIDA AGORA!
                 st.markdown(f"<h2 style='color:#3b82f6;'>R$ {d['total']:.2f}</h2>", unsafe_allow_html=True)
                 pdf_io = io.BytesIO()
                 render_summary_pdf(pdf_io, d['payload_pdf'])
@@ -116,4 +115,37 @@ def render_gerador(conn, user_id, cfg):
                     zap_limpo = '55' + zap_limpo
                 
                 url_zap = f"https://wa.me/{zap_limpo}?text={urllib.parse.quote(msg_zap)}"
-                st.markdown(f'<a href="{url_zap}" target="_blank"><button style="width:100
+                
+                # --- BOTÃO CORRIGIDO E PROTEGIDO CONTRA QUEBRA DE LINHA ---
+                btn_html = f'''
+                <a href="{url_zap}" target="_blank" style="text-decoration:none;">
+                    <button style="width:100%; height:45px; border-radius:10px; background:#25d366; color:white; border:none; font-weight:700; cursor:pointer;">
+                        ENVIAR WHATSAPP
+                    </button>
+                </a>
+                '''
+                st.markdown(btn_html, unsafe_allow_html=True)
+                # -----------------------------------------------------------
+                
+        with col_r3:
+            with st.container(border=True):
+                st.subheader("📦 Lista Fornecedor")
+                lista_txt = "\n".join([f"• {m['qty']}x {m['desc']}" for m in d['materiais']])
+                st.text_area("Materiais:", lista_txt, height=120)
+                st.download_button("💾 BAIXAR LISTA .TXT", lista_txt, "pedido_fornecedor.txt", use_container_width=True)
+
+        # --- TABELA DE DETALHAMENTO (Aberta na tela) ---
+        st.markdown("---")
+        with st.expander("📊 Ver Detalhamento Completo de Custos (Material e Mão de Obra)", expanded=True):
+            itens_calculados = d['payload_pdf']['servicos'][0]['items']
+            df_detalhes = pd.DataFrame(itens_calculados)
+            df_detalhes = df_detalhes.rename(columns={
+                'desc': 'Descrição do Item',
+                'qty': 'Quantidade',
+                'unit': 'Vlr. Unitário',
+                'sub': 'Subtotal'
+            })
+            df_detalhes['Vlr. Unitário'] = df_detalhes['Vlr. Unitário'].apply(lambda x: f"R$ {float(x):,.2f}")
+            df_detalhes['Subtotal'] = df_detalhes['Subtotal'].apply(lambda x: f"R$ {float(x):,.2f}")
+            
+            st.dataframe(df_detalhes, use_container_width=True, hide_index=True)
