@@ -19,8 +19,8 @@ def get_conn():
 
 def get_price(conn, key: str) -> float:
     """
-    Lógica limpa e direta: Busca exatamente a chave que o plugin solicitou 
-    amarrada ao usuário logado.
+    Busca EXATA pelo ID (chave) no banco de dados. Sem achismos.
+    Se o plugin pedir "haste_reta", ele busca estritamente "haste_reta".
     """
     if 'user_id' not in st.session_state:
         return 0.0
@@ -28,6 +28,8 @@ def get_price(conn, key: str) -> float:
     user_id = st.session_state.user_id
     
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        # Busca exata usando a coluna 'chave'
         cur.execute("SELECT valor FROM precos WHERE chave=%s AND usuario_id=%s LIMIT 1", (key, user_id))
         row = cur.fetchone()
+        
         return float(row["valor"]) if row else 0.0
