@@ -18,13 +18,11 @@ def render_gerador(conn, user_id, cfg):
         cliente = c1.text_input("Nome do Cliente")
         
         # --- PLACEHOLDER INTELIGENTE (DDD DINÂMICO) ---
-        # Extrai apenas os números do telefone do instalador logado e pega os 2 primeiros (DDD)
         numero_usuario = re.sub(r'\D', '', str(cfg[1]))
         ddd_local = numero_usuario[:2] if len(numero_usuario) >= 2 else "11"
         placeholder_inteligente = f"({ddd_local}) 99999-9999"
         
         zap_cli = c2.text_input("WhatsApp do Cliente", placeholder=placeholder_inteligente)
-        # ----------------------------------------------
         
         plugins = registry.get_plugins()
         servico_label = st.selectbox("Selecione o Serviço", list(p.label for p in plugins.values()))
@@ -100,4 +98,22 @@ def render_gerador(conn, user_id, cfg):
         with col_r1:
             with st.container(border=True):
                 st.subheader("📄 Proposta Formal")
-                st.markdown(f"<h2 style='color:#3b82f6;'>R$ {d['total']:.2
+                # A LINHA QUE DEU ERRO FOI ESTA ABAIXO. ELA ESTÁ CORRIGIDA AGORA!
+                st.markdown(f"<h2 style='color:#3b82f6;'>R$ {d['total']:.2f}</h2>", unsafe_allow_html=True)
+                pdf_io = io.BytesIO()
+                render_summary_pdf(pdf_io, d['payload_pdf'])
+                st.download_button("📥 BAIXAR PDF", pdf_io.getvalue(), f"Orcamento_{d['cliente']}.pdf", use_container_width=True)
+
+        with col_r2:
+            with st.container(border=True):
+                st.subheader("📱 WhatsApp Cliente")
+                msg_zap = f"*PROPOSTA: {cfg[0]}*\n\n{d['texto_beneficios']}\n\n*Total: R$ {d['total']:.2f}*"
+                st.text_area("Prévia:", msg_zap, height=120)
+                
+                zap_cli_sujo = d['whatsapp_cliente']
+                zap_limpo = re.sub(r'\D', '', zap_cli_sujo) 
+                if len(zap_limpo) >= 10 and not zap_limpo.startswith('55'):
+                    zap_limpo = '55' + zap_limpo
+                
+                url_zap = f"https://wa.me/{zap_limpo}?text={urllib.parse.quote(msg_zap)}"
+                st.markdown(f'<a href="{url_zap}" target="_blank"><button style="width:100
