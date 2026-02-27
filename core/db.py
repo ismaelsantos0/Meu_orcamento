@@ -5,8 +5,13 @@ import streamlit as st
 
 @st.cache_resource
 def get_conn():
+    """
+    Conecta ao PostgreSQL usando a variável DATABASE_URL fornecida pelo Railway.
+    """
     db_url = os.getenv("DATABASE_URL")
+    
     if not db_url:
+        # Fallback para desenvolvimento local
         db_url = "postgresql://usuario:senha@localhost:5432/seu_banco"
         
     try:
@@ -19,8 +24,7 @@ def get_conn():
 
 def get_price(conn, key: str) -> float:
     """
-    Busca EXATA pelo ID (chave) no banco de dados. Sem achismos.
-    Se o plugin pedir "haste_reta", ele busca estritamente "haste_reta".
+    Busca o preço EXATO pela chave fixa (ID) no banco de dados para o usuário logado.
     """
     if 'user_id' not in st.session_state:
         return 0.0
@@ -28,8 +32,7 @@ def get_price(conn, key: str) -> float:
     user_id = st.session_state.user_id
     
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
-        # Busca exata usando a coluna 'chave'
-        cur.execute("SELECT valor FROM precos WHERE chave=%s AND usuario_id=%s LIMIT 1", (key, user_id))
+        # Busca o valor filtrando por CHAVE e por USUÁRIO para garantir o isolamento SaaS
+        cur.execute("SELECT valor FROM precos WHERE chave = %s AND usuario_id = %s", (key, user_id))
         row = cur.fetchone()
-        
         return float(row["valor"]) if row else 0.0
