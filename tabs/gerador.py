@@ -1,67 +1,103 @@
 import streamlit as st
 
 def render_gerador(conn, user_id, cfg):
-    st.header("📋 Gerador de Orçamentos")
+    # 1. RECUPERAÇÃO DE VARIÁVEIS DE CONFIGURAÇÃO
+    # Busca os dados do objeto cfg, com valores padrão caso estejam vazios
+    nome_loja = cfg.get("nome_loja", "Sua Empresa")
+    telefone_loja = cfg.get("telefone_contato", "00 00000-0000")
+    
+    st.header(f"📋 Gerador de Orçamentos")
+    st.caption(f"Operando como: **{nome_loja}**")
 
-    # 1. INICIALIZAÇÃO DO ESTADO (O "pulo do gato" para evitar o erro)
+    # 2. INICIALIZAÇÃO DO SESSION STATE (Evita o AttributeError)
     if "orcamento_pronto" not in st.session_state:
         st.session_state.orcamento_pronto = False
     
     if "dados_finais" not in st.session_state:
         st.session_state.dados_finais = {}
 
-    # 2. FORMULÁRIO DE ENTRADA
+    # 3. FORMULÁRIO DE ENTRADA DE DADOS
     with st.form("form_orcamento"):
-        st.subheader("Dados do Cliente e Serviço")
-        cliente = st.text_input("Nome do Cliente")
-        servico = st.selectbox("Tipo de Instalação", 
-                              ["Fechadura Sobrepor (Madeira Nova)", 
-                               "Fechadura Embutir (Madeira Nova)", 
-                               "Configuração Smart/Wi-Fi"])
+        col1, col2 = st.columns(2)
         
-        valor_sugerido = 0.0
-        if "Sobrepor" in servico: valor_sugerido = 250.0
-        elif "Embutir" in servico: valor_sugerido = 450.0
-        else: valor_sugerido = 100.0
+        with col1:
+            cliente = st.text_input("Nome do Cliente", placeholder="Ex: João Silva")
+            contato_cliente = st.text_input("WhatsApp do Cliente", placeholder="(95) 9XXXX-XXXX")
+        
+        with col2:
+            servico = st.selectbox(
+                "Tipo de Instalação", 
+                [
+                    "Fechadura Sobrepor (Porta Madeira Nova)", 
+                    "Fechadura Embutir (Porta Madeira Nova)", 
+                    "Configuração Hub Wi-Fi / Automação",
+                    "Manutenção Técnica"
+                ]
+            )
+            
+            # Lógica básica de preço (pode ser personalizada no banco depois)
+            if "Sobrepor" in servico: valor_base = 250.0
+            elif "Embutir" in servico: valor_base = 450.0
+            elif "Configuração" in servico: valor_base = 150.0
+            else: valor_base = 0.0
 
-        preco = st.number_input("Valor do Serviço (R$)", value=valor_sugerido)
+            preco = st.number_input("Valor do Serviço (R$)", value=valor_base, min_value=0.0)
         
-        btn_gerar = st.form_submit_button("Gerar Orçamento")
+        observacoes = st.text_area("Observações Técnicas (opcional)")
+        
+        btn_gerar = st.form_submit_button("Gerar Orçamento Profissional")
 
         if btn_gerar:
-            # Aqui definimos os dados e mudamos o estado para True
-            st.session_state.dados_finais = {
-                "cliente": cliente,
-                "servico": servico,
-                "preco": preco
-            }
-            st.session_state.orcamento_pronto = True
-            st.rerun() # Recarrega para mostrar o resultado abaixo
+            if not cliente:
+                st.error("Por favor, preencha o nome do cliente.")
+            else:
+                # Salva os dados no estado da sessão para persistência
+                st.session_state.dados_finais = {
+                    "empresa": nome_loja,
+                    "telefone": telefone_loja,
+                    "cliente": cliente,
+                    "servico": servico,
+                    "preco": preco,
+                    "obs": observacoes
+                }
+                st.session_state.orcamento_pronto = True
+                st.rerun()
 
     st.divider()
 
-    # 3. EXIBIÇÃO DO RESULTADO (A linha 91 que estava dando erro)
+    # 4. EXIBIÇÃO E EXPORTAÇÃO (SÓ APARECE APÓS GERAR)
     if st.session_state.orcamento_pronto:
-        dados = st.session_state.dados_finais
+        d = st.session_state.dados_finais
         
-        st.success("✅ Orçamento gerado com sucesso!")
+        st.success("Orçamento gerado com sucesso!")
         
-        # Layout do Orçamento para o cliente
-        orcamento_texto = f"""
-        *ORÇAMENTO - RR SMART SOLUÇÕES*
-        ------------------------------
-        *Cliente:* {dados['cliente']}
-        *Serviço:* {dados['servico']}
-        *Total:* R$ {dados['preco']:.2f}
-        ------------------------------
-        *Pagamento:* PIX ou Cartão
-        *Validade:* 7 dias
-        """
+        # Formatação do texto para copiar e colar no WhatsApp
+        texto_whatsapp = (
+            f"Olá {d['cliente']}!\n\n"
+            f"Segue o orçamento conforme solicitado:\n\n"
+            f"*📄 ORÇAMENTO - {d['empresa']}*\n"
+            f"----------------------------------\n"
+            f"*Serviço:* {d['servico']}\n"
+            f"*Valor Total:* R$ {d['preco']:.2f}\n"
+            f"{f'*Obs:* {d['obs']}' if d['obs'] else ''}\n"
+            f"----------------------------------\n"
+            f"*Contato:* {d['telefone']}\n\n"
+            f"Ficamos à disposição para agendamento!"
+        )
         
-        st.code(orcamento_texto, language="markdown")
+        st.subheader("Visualização do Orçamento")
+        st.info("Copie o texto abaixo para enviar ao cliente:")
+        st.code(texto_whatsapp, language="text")
         
-        # Botão para limpar e fazer outro
-        if st.button("Criar Novo Orçamento"):
-            st.session_state.orcamento_pronto = False
-            st.session_state.dados_finais = {}
-            st.rerun()
+        # Botões de ação
+        col_btn1, col_btn2 = st.columns(2)
+        with col_btn1:
+            if st.button("🔄 Novo Orçamento"):
+                st.session_state.orcamento_pronto = False
+                st.session_state.dados_finais = {}
+                st.rerun()
+        
+        with col_btn2:
+            # Link direto para o WhatsApp (opcional)
+            link_zap = f"https://wa.me/{d['telefone'].replace(' ', '').replace('-', '')}"
+            st.link_button("Ir para o WhatsApp", link_zap)
