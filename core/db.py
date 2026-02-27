@@ -5,15 +5,10 @@ import streamlit as st
 
 @st.cache_resource
 def get_conn():
-    """
-    Conecta ao PostgreSQL usando a variável DATABASE_URL fornecida pelo Railway.
-    """
+    """Conecta ao PostgreSQL no Railway."""
     db_url = os.getenv("DATABASE_URL")
-    
     if not db_url:
-        # Fallback para desenvolvimento local
         db_url = "postgresql://usuario:senha@localhost:5432/seu_banco"
-        
     try:
         conn = psycopg2.connect(db_url)
         conn.autocommit = True 
@@ -23,16 +18,12 @@ def get_conn():
         raise e
 
 def get_price(conn, key: str) -> float:
-    """
-    Busca o preço EXATO pela chave fixa (ID) no banco de dados para o usuário logado.
-    """
+    """Busca o preço pela CHAVE FIXA e USUÁRIO logado."""
     if 'user_id' not in st.session_state:
         return 0.0
-        
     user_id = st.session_state.user_id
-    
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
-        # Busca o valor filtrando por CHAVE e por USUÁRIO para garantir o isolamento SaaS
+        # Busca o valor ignorando duplicatas de nomes, focando apenas no ID do sistema (chave)
         cur.execute("SELECT valor FROM precos WHERE chave = %s AND usuario_id = %s", (key, user_id))
         row = cur.fetchone()
         return float(row["valor"]) if row else 0.0
