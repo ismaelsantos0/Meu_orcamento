@@ -1,10 +1,6 @@
-from datetime import datetime
-import streamlit as st
-
 from core.db import get_price
-from core.money import brl
+from core.utils import brl, ceil_div   # <--- ATUALIZADO
 from services.base import ServicePlugin
-
 
 id = "motor_install"
 label = "Motor de portão (instalação)"
