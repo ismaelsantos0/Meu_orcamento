@@ -7,10 +7,8 @@ from core.utils import ceil_div
 from core.pdf.service_descriptions import get_service_description
 from services.base import ServicePlugin
 
-
 id = "concertina_linear"
 label = "Concertina linear eletrificada (instalação)"
-
 
 def render_fields():
     c1, c2, c3, c4 = st.columns(4)
@@ -29,7 +27,6 @@ def render_fields():
         "espacamento": float(espac),
         "cantos": int(cantos),
     }
-
 
 def compute(conn, inputs: dict):
     perimetro = inputs["perimetro"]
@@ -72,6 +69,17 @@ def compute(conn, inputs: dict):
     add("Mão de obra (taxa base)", 1, get_price(conn, "mao_linear_base"))
     add("Mão de obra (R$/metro)", perimetro, get_price(conn, "mao_linear_por_m"))
 
+    # --- TEXTOS INSERIDOS PARA O PDF ---
+    summary_full = (
+        f"Instalação de {perimetro:.0f}m de concertina linear eletrificada ({fios} fios).\n"
+        "Inclui central SH1800, bateria, sirene, hastes, aterramento e placas de aviso.\n"
+        "Sistema entregue configurado e testado."
+    )
+    summary_client = (
+        f"Concertina linear eletrificada em {perimetro:.0f}m ({fios} fios).\n"
+        "Proteção contínua e estética padronizada. Inclui central de choque, sirene e testes finais."
+    )
+
     return {
         "id": f"{datetime.now().timestamp()}",
         "service_id": id,
@@ -80,7 +88,8 @@ def compute(conn, inputs: dict):
         "subtotal": subtotal,
         "subtotal_brl": brl(subtotal),
         "service_description": get_service_description("concertina_linear"),
+        "summary_full": summary_full,       # Resolve o KeyError
+        "summary_client": summary_client,   # Resolve o KeyError
     }
-
 
 plugin = ServicePlugin(id=id, label=label, render_fields=render_fields, compute=compute)
