@@ -1,14 +1,10 @@
 import os
 import psycopg2
-from psycopg2.extras import RealDictCursor
 import streamlit as st
 
 @st.cache_resource
 def get_conn():
-    """Conecta ao PostgreSQL no Railway."""
-    db_url = os.getenv("DATABASE_URL")
-    if not db_url:
-        db_url = "postgresql://usuario:senha@localhost:5432/seu_banco"
+    db_url = os.getenv("DATABASE_URL") or "postgresql://usuario:senha@localhost:5432/seu_banco"
     try:
         conn = psycopg2.connect(db_url)
         conn.autocommit = True 
@@ -18,12 +14,12 @@ def get_conn():
         raise e
 
 def get_price(conn, key: str) -> float:
-    """Busca o preço pela CHAVE FIXA e USUÁRIO logado."""
+    """Busca o preço pela CHAVE FIXA e USUÁRIO logado no Streamlit."""
     if 'user_id' not in st.session_state:
         return 0.0
-    user_id = st.session_state.user_id
-    with conn.cursor(cursor_factory=RealDictCursor) as cur:
-        # Busca o valor ignorando duplicatas de nomes, focando apenas no ID do sistema (chave)
-        cur.execute("SELECT valor FROM precos WHERE chave = %s AND usuario_id = %s", (key, user_id))
+    
+    with conn.cursor() as cur:
+        # Usando cursor padrão para evitar bugs de dicionário no psycopg2
+        cur.execute("SELECT valor FROM precos WHERE chave = %s AND usuario_id = %s", (key, st.session_state.user_id))
         row = cur.fetchone()
-        return float(row["valor"]) if row else 0.0
+        return float(row[0]) if row else 0.0
