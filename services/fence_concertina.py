@@ -1,8 +1,9 @@
+from datetime import datetime
+import streamlit as st
+
 from core.db import get_price
-from core.utils import brl, ceil_div   # <--- ATUALIZADO
+from core.utils import brl, ceil_div
 from services.base import ServicePlugin
-
-
 id = "fence_concertina_install"
 label = "Cerca elétrica + concertina (instalação)"
 
