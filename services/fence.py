@@ -1,11 +1,6 @@
-from datetime import datetime
-import streamlit as st
-
 from core.db import get_price
-from core.money import brl
-from core.utils import ceil_div
+from core.utils import brl, ceil_div   # <--- ATUALIZADO
 from services.base import ServicePlugin
-
 
 id = "fence_install"
 label = "Cerca elétrica (instalação)"
