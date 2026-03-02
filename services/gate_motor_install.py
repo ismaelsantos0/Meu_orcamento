@@ -1,7 +1,10 @@
-from core.db import get_price
-from core.utils import brl, ceil_div   # <--- ATUALIZADO
-from services.base import ServicePlugin
+from datetime import datetime
+import streamlit as st
 
+from core.db import get_price
+from core.utils import brl, ceil_div
+from core.pdf.service_descriptions import get_service_description
+from services.base import ServicePlugin
 id = "motor_install"
 label = "Motor de portão (instalação)"
 
