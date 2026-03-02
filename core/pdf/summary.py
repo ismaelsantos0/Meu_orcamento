@@ -1,8 +1,8 @@
+import textwrap
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
-from core.utils import brl           # <--- ATUALIZADO
+from core.utils import brl
 from core.pdf.base import draw_header
-
 def render_summary_pdf(out_path, quote: dict):
     c = canvas.Canvas(out_path, pagesize=A4)
     w, h = A4
