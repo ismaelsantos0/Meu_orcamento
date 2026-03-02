@@ -4,7 +4,7 @@ import time
 
 # O Dicionário Mestre com os IDs, Nomes, Categoria e PREÇO PADRÃO
 CATALOGO_SISTEMA = {
-    # CERCA E CONCERTINA (Seus valores + Sugestões)
+    # CERCA E CONCERTINA
     "haste_reta": ("Haste reta", "Cerca/Concertina", 19.00),
     "haste_canto": ("Haste de canto", "Cerca/Concertina", 50.00),
     "fio_aco_200m": ("Fio de aço (200m)", "Cerca/Concertina", 80.00),
@@ -14,40 +14,39 @@ CATALOGO_SISTEMA = {
     "concertina_10m": ("Concertina 30cm (10m)", "Cerca/Concertina", 90.00),
     "concertina_linear_20m": ("Concertina linear (20m)", "Cerca/Concertina", 53.00),
     "cabo_alta_50m": ("Cabo de alta isolação (50m)", "Cerca/Concertina", 45.00),
-    "kit_aterramento": ("Kit Aterramento (Haste + Conector)", "Cerca/Concertina", 35.00),
-    "kit_placas": ("Kit Placas de Aviso (4un)", "Cerca/Concertina", 15.00),
+    "kit_aterramento": ("Kit Aterramento", "Cerca/Concertina", 35.00),
+    "kit_placas": ("Kit Placas de Aviso", "Cerca/Concertina", 15.00),
     "kit_isoladores": ("Kit Isoladores (100un)", "Cerca/Concertina", 25.00),
 
-    # MÃO DE OBRA: CERCA E CONCERTINA (Sugestões de mercado)
-    "mao_cerca_base": ("Mão de obra: Cerca (Taxa Base)", "Cerca/Concertina", 150.00),
-    "mao_cerca_por_m": ("Mão de obra: Cerca (R$ / Metro)", "Cerca/Concertina", 10.00),
-    "mao_concertina_base": ("Mão de obra: Concertina em Muro (Base)", "Cerca/Concertina", 120.00),
-    "mao_concertina_por_m": ("Mão de obra: Concertina (R$ / Metro)", "Cerca/Concertina", 12.00),
+    "mao_cerca_base": ("Mão de obra: Cerca (Base)", "Cerca/Concertina", 150.00),
+    "mao_cerca_por_m": ("Mão de obra: Cerca (Metro)", "Cerca/Concertina", 10.00),
+    "mao_concertina_base": ("Mão de obra: Concertina em Cerca (Base)", "Cerca/Concertina", 120.00),
+    "mao_concertina_por_m": ("Mão de obra: Concertina em Cerca (Metro)", "Cerca/Concertina", 12.00),
     "mao_linear_base": ("Mão de obra: Concertina Linear (Base)", "Cerca/Concertina", 150.00),
     "mao_linear_por_m": ("Mão de obra: Concertina Linear (Metro)", "Cerca/Concertina", 15.00),
 
-    # SUGESTÕES: CFTV
-    "cftv_camera": ("Câmera CFTV HD", "CFTV", 120.00),
-    "cftv_dvr": ("DVR 4 Canais", "CFTV", 350.00),
-    "cftv_hd": ("HD para DVR 1TB", "CFTV", 280.00),
-    "cftv_fonte_colmeia": ("Fonte Colmeia 12V 15A", "CFTV", 55.00),
+    # CFTV
+    "cftv_camera": ("Câmera CFTV", "CFTV", 120.00),
+    "cftv_dvr": ("DVR", "CFTV", 350.00),
+    "cftv_hd": ("HD para DVR", "CFTV", 280.00),
+    "cftv_fonte_colmeia": ("Fonte Colmeia", "CFTV", 55.00),
     "cftv_cabo_cat5_m": ("Cabo Cat5e (Metro)", "CFTV", 2.50),
-    "cftv_balun": ("Balun de Vídeo (Par)", "CFTV", 15.00),
+    "cftv_balun": ("Balun de Vídeo", "CFTV", 15.00),
     "cftv_conector_p4_macho": ("Conector P4 Macho", "CFTV", 2.50),
     "cftv_conector_p4_femea": ("Conector P4 Fêmea", "CFTV", 2.50),
     "cftv_suporte_camera": ("Suporte para Câmera", "CFTV", 10.00),
     "cftv_caixa_hermetica": ("Caixa Hermética", "CFTV", 12.00),
     
-    # MÃO DE OBRA: CFTV E MOTORES
-    "mao_cftv_dvr": ("Mão de obra: Instalação DVR e Config", "CFTV", 150.00),
+    "mao_cftv_dvr": ("Mão de obra: Instalação DVR", "CFTV", 150.00),
     "mao_cftv_por_camera_inst": ("Mão de obra: Instalar Câmera (un)", "CFTV", 80.00),
     "mao_cftv_por_camera_defeito": ("Mão de obra: Manutenção Câmera", "CFTV", 60.00),
+    
+    # MOTOR DE PORTÃO
     "mao_motor_inst": ("Mão de obra: Instalação Motor", "Motor de Portão", 250.00),
     "mao_motor_man": ("Mão de obra: Manutenção Motor", "Motor de Portão", 120.00)
 }
 
 def restaurar_catalogo_base(conn, user_id):
-    """Garante que os itens obrigatórios existam no banco com o PREÇO PADRÃO."""
     with conn.cursor() as cur:
         for chave, (nome, cat, preco_padrao) in CATALOGO_SISTEMA.items():
             cur.execute("SELECT id FROM precos WHERE chave = %s AND usuario_id = %s", (chave, user_id))
@@ -117,15 +116,3 @@ def render_precos(conn, user_id):
     st.markdown("### Tabela de Custos")
     df_lista = pd.read_sql("SELECT chave as \"ID do Sistema\", nome as \"Produto\", valor as \"Preço (R$)\", categoria as \"Categoria\" FROM precos WHERE usuario_id = %s ORDER BY categoria, nome", conn, params=(user_id,))
     st.dataframe(df_lista, use_container_width=True, hide_index=True)
-
-    # --- BOTÃO DE LIMPEZA (USAR APENAS UMA VEZ) ---
-    st.markdown("---")
-    with st.expander("⚠️ Opções de Desenvolvedor (Cuidado)"):
-        st.warning("Isso apagará TODOS os preços cadastrados e recarregará a tabela padrão.")
-        if st.button("🚨 RESETAR MINHA TABELA DE PREÇOS", type="primary"):
-            with conn.cursor() as cur:
-                cur.execute("DELETE FROM precos WHERE usuario_id = %s", (user_id,))
-            conn.commit()
-            st.success("Tabela limpa! A página será recarregada para puxar os novos valores.")
-            time.sleep(2)
-            st.rerun()
