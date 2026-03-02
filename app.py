@@ -11,6 +11,7 @@ from tabs.gerador import render_gerador
 from tabs.precos import render_precos
 from tabs.modelos import render_modelos
 from tabs.configuracoes import render_configuracoes
+from tabs.admin import render_admin  # <--- IMPORTAÇÃO DA ABA ADMIN
 
 apply_vero_style()
 
@@ -37,6 +38,8 @@ if not st.session_state.logged_in:
                         st.session_state.logged_in = True
                         st.session_state.user_id = user[0]
                         st.rerun()
+                    else:
+                        st.error("E-mail ou senha incorretos.")
 
         with tab_cadastro:
             with st.container(border=True):
@@ -57,34 +60,28 @@ if not st.session_state.logged_in:
                                 cur.execute("INSERT INTO usuarios (nome, email, whatsapp, senha) VALUES (%s, %s, %s, %s) RETURNING id", (n_nome, n_email, whats_limpo, s_hash))
                                 u_id = cur.fetchone()[0]
                                 cur.execute("INSERT INTO config_empresa (usuario_id, nome_empresa, whatsapp) VALUES (%s, %s, %s)", (u_id, n_nome, whats_limpo))
-                                
-                                # LISTA DE IDS FIXOS (IDs da sua planilha que o sistema usa para calcular)
-                                itens = [
-                                    ('bateria', 'Bateria 12V', 'Cerca/Concertina'),
-                                    ('haste_reta', 'Haste Reta', 'Cerca/Concertina'),
-                                    ('haste_canto', 'Haste de Canto', 'Cerca/Concertina'),
-                                    ('central_sh1800', 'Central SH1800', 'Cerca/Concertina'),
-                                    ('mao_cerca_base', 'Mão de obra: Cerca (Base)', 'Cerca/Concertina'),
-                                    ('cftv_camera', 'Câmera CFTV', 'CFTV'),
-                                    ('cftv_dvr', 'DVR', 'CFTV'),
-                                    ('mao_cftv_dvr', 'Mão de obra: Instalação DVR', 'CFTV')
-                                ]
-                                for ch, nm, ct in itens:
-                                    cur.execute("INSERT INTO precos (chave, nome, valor, usuario_id, categoria) VALUES (%s, %s, 0, %s, %s)", (ch, nm, u_id, ct))
                             conn.commit()
-                            st.success("Conta criada! Acesse a aba Preços para preencher seus valores.")
-                        except Exception as e: st.error(f"Erro: {e}")
+                            st.success("Conta criada com sucesso! Faça login para começar.")
+                        except Exception as e: 
+                            st.error(f"Erro ao criar conta: {e}")
+                    else:
+                        st.warning("Verifique se as senhas coincidem e se o WhatsApp é válido.")
     st.stop()
 
 user_id = st.session_state.user_id
 conn = get_conn()
+
 with conn.cursor() as cur:
     cur.execute("SELECT nome_empresa, whatsapp, logo, pagamento_padrao, garantia_padrao, validade_dias FROM config_empresa WHERE usuario_id = %s", (user_id,))
-    cfg = cur.fetchone() or ("Sua Empresa", "999999999", None, "A combinar", "90 dias", 7)
+    # Fallback configurado para a RR Smart Soluções caso falte no banco
+    cfg = cur.fetchone() or ("RR Smart Soluções", "559584187832", None, "A combinar", "90 dias", 7)
 
-tabs = st.tabs(["📊 Histórico", "📑 Gerador", "💰 Preços", "✍️ Textos", "⚙️ Configs"])
+# --- ADICIONADO A ABA ADMIN NO FINAL ---
+tabs = st.tabs(["📊 Histórico", "📑 Gerador", "💰 Preços", "✍️ Textos", "⚙️ Configs", "👑 Admin"])
+
 with tabs[0]: render_historico(conn, user_id)
 with tabs[1]: render_gerador(conn, user_id, cfg)
 with tabs[2]: render_precos(conn, user_id)
 with tabs[3]: render_modelos(conn, user_id)
 with tabs[4]: render_configuracoes(conn, user_id, cfg)
+with tabs[5]: render_admin(conn, user_id)
