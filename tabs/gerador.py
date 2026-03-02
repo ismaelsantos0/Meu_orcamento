@@ -3,8 +3,10 @@ import pandas as pd
 import io
 import urllib.parse
 import re
+import time  # <--- Importante para a pausa da animação
+
 from core.db import get_price
-from core.utils import build_materials_list  # <--- ATUALIZADO
+from core.utils import build_materials_list
 from core.pdf.summary import render_summary_pdf
 import services.registry as registry
 
@@ -48,39 +50,48 @@ def render_gerador(conn, user_id, cfg):
             if not cliente:
                 st.error("Por favor, preencha o nome do cliente.")
             else:
-                res = plugin.compute(conn, inputs)
-                
-                for ex in extras_final:
-                    sub_ex = ex['qtd'] * ex['info']['valor']
-                    res['items'].append({'desc': ex['info']['nome'], 'qty': ex['qtd'], 'unit': ex['info']['valor'], 'sub': sub_ex})
-                    res['subtotal'] += sub_ex
-                
-                with conn.cursor() as cur:
-                    cur.execute("SELECT texto_detalhado FROM modelos_texto WHERE usuario_id = %s AND servico_tipo = %s", (user_id, cat_match))
-                    t_row = cur.fetchone()
-                texto_pdf = t_row[0] if t_row else "Instalação profissional com garantia."
-                
-                try:
+                # 1. Efeito visual de carregamento (Spinner)
+                with st.spinner("A processar os cálculos e a desenhar a proposta profissional..."):
+                    res = plugin.compute(conn, inputs)
+                    
+                    for ex in extras_final:
+                        sub_ex = ex['qtd'] * ex['info']['valor']
+                        res['items'].append({'desc': ex['info']['nome'], 'qty': ex['qtd'], 'unit': ex['info']['valor'], 'sub': sub_ex})
+                        res['subtotal'] += sub_ex
+                    
                     with conn.cursor() as cur:
-                        cur.execute("""
-                            INSERT INTO historico_orcamentos (usuario_id, cliente, valor, status) 
-                            VALUES (%s, %s, %s, 'Pendente')
-                        """, (user_id, cliente, res['subtotal']))
-                except Exception:
-                    conn.rollback() 
-                
-                st.session_state.dados_finais = {
-                    "cliente": cliente, 
-                    "whatsapp_cliente": zap_cli, 
-                    "total": res['subtotal'],
-                    "materiais": build_materials_list(res), 
-                    "texto_beneficios": texto_pdf,
-                    "payload_pdf": {
-                        "logo_bytes": cfg[2], "empresa": cfg[0], "whatsapp": cfg[1], "cliente": cliente,
-                        "servicos": [res], "total": res['subtotal'], "pagamento": cfg[3], "garantia": cfg[4], "validade_dias": cfg[5]
+                        cur.execute("SELECT texto_detalhado FROM modelos_texto WHERE usuario_id = %s AND servico_tipo = %s", (user_id, cat_match))
+                        t_row = cur.fetchone()
+                    texto_pdf = t_row[0] if t_row else "Instalação profissional com garantia."
+                    
+                    try:
+                        with conn.cursor() as cur:
+                            cur.execute("""
+                                INSERT INTO historico_orcamentos (usuario_id, cliente, valor, status) 
+                                VALUES (%s, %s, %s, 'Pendente')
+                            """, (user_id, cliente, res['subtotal']))
+                    except Exception:
+                        conn.rollback() 
+                    
+                    st.session_state.dados_finais = {
+                        "cliente": cliente, 
+                        "whatsapp_cliente": zap_cli, 
+                        "total": res['subtotal'],
+                        "materiais": build_materials_list(res), 
+                        "texto_beneficios": texto_pdf,
+                        "payload_pdf": {
+                            "logo_bytes": cfg[2], "empresa": cfg[0], "whatsapp": cfg[1], "cliente": cliente,
+                            "servicos": [res], "total": res['subtotal'], "pagamento": cfg[3], "garantia": cfg[4], "validade_dias": cfg[5]
+                        }
                     }
-                }
-                st.session_state.orcamento_pronto = True
+                    st.session_state.orcamento_pronto = True
+                
+                # 2. Animação de Sucesso
+                st.toast('Proposta gerada com sucesso!', icon='✅')
+                st.balloons()
+                
+                # 3. Pausa rápida para o utilizador ver a animação antes de recarregar a interface
+                time.sleep(1.5)
                 st.rerun()
 
     if st.session_state.orcamento_pronto and st.session_state.dados_finais:
