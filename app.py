@@ -1,6 +1,7 @@
 import streamlit as st
 import hashlib
 import re
+from streamlit_option_menu import option_menu
 
 st.set_page_config(page_title="VERO Smart Systems", layout="wide", initial_sidebar_state="collapsed")
 
@@ -11,7 +12,7 @@ from tabs.gerador import render_gerador
 from tabs.precos import render_precos
 from tabs.modelos import render_modelos
 from tabs.configuracoes import render_configuracoes
-from tabs.admin import render_admin  # <--- IMPORTAÇÃO DA ABA ADMIN
+from tabs.admin import render_admin
 
 apply_vero_style()
 
@@ -73,15 +74,34 @@ conn = get_conn()
 
 with conn.cursor() as cur:
     cur.execute("SELECT nome_empresa, whatsapp, logo, pagamento_padrao, garantia_padrao, validade_dias FROM config_empresa WHERE usuario_id = %s", (user_id,))
-    # Fallback configurado para a RR Smart Soluções caso falte no banco
     cfg = cur.fetchone() or ("RR Smart Soluções", "559584187832", None, "A combinar", "90 dias", 7)
 
-# --- ADICIONADO A ABA ADMIN NO FINAL ---
-tabs = st.tabs(["📊 Histórico", "📑 Gerador", "💰 Preços", "✍️ Textos", "⚙️ Configs", "👑 Admin"])
+# --- MENU DE NAVEGAÇÃO PREMIUM ---
+aba_selecionada = option_menu(
+    menu_title=None,
+    options=["Gerador", "Histórico", "Preços", "Textos", "Configs", "Admin"],
+    icons=["file-earmark-pdf", "bar-chart-line", "cash-coin", "journal-text", "gear", "shield-lock"],
+    menu_icon="cast",
+    default_index=0,
+    orientation="horizontal",
+    styles={
+        "container": {"padding": "0!important", "background-color": "#1a2235", "border-radius": "15px", "border": "1px solid #2d3748", "margin-bottom": "25px"},
+        "icon": {"color": "#3b82f6", "font-size": "18px"}, 
+        "nav-link": {"font-size": "15px", "text-align": "center", "margin":"0px", "--hover-color": "#262933", "color": "#a0aec0", "font-weight": "600"},
+        "nav-link-selected": {"background-color": "#3b82f6", "color": "white"},
+    }
+)
 
-with tabs[0]: render_historico(conn, user_id)
-with tabs[1]: render_gerador(conn, user_id, cfg)
-with tabs[2]: render_precos(conn, user_id)
-with tabs[3]: render_modelos(conn, user_id)
-with tabs[4]: render_configuracoes(conn, user_id, cfg)
-with tabs[5]: render_admin(conn, user_id)
+# --- ROTEAMENTO DAS PÁGINAS ---
+if aba_selecionada == "Gerador": 
+    render_gerador(conn, user_id, cfg)
+elif aba_selecionada == "Histórico": 
+    render_historico(conn, user_id)
+elif aba_selecionada == "Preços": 
+    render_precos(conn, user_id)
+elif aba_selecionada == "Textos": 
+    render_modelos(conn, user_id)
+elif aba_selecionada == "Configs": 
+    render_configuracoes(conn, user_id, cfg)
+elif aba_selecionada == "Admin": 
+    render_admin(conn, user_id)
