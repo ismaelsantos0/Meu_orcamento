@@ -3,4 +3,4 @@ pandas==2.2.3
 reportlab==4.2.5
 python-dateutil==2.9.0.post0
 psycopg2-binary>=2.9.10
-pip install streamlit-option-menu
+streamlit-option-menu
