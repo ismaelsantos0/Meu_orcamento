@@ -1,12 +1,6 @@
-from datetime import datetime
-import streamlit as st
-
 from core.db import get_price
-from core.money import brl
-from core.utils import ceil_div
-from core.pdf.service_descriptions import get_service_description
+from core.utils import brl, ceil_div   # <--- ATUALIZADO
 from services.base import ServicePlugin
-
 id = "concertina_linear"
 label = "Concertina linear eletrificada (instalação)"
 
