@@ -1,6 +1,6 @@
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
-from core.money import brl           # <--- O problema está aqui
+from core.utils import brl           # <--- ATUALIZADO
 from core.pdf.base import draw_header
 
 
