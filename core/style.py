@@ -3,67 +3,59 @@ import streamlit as st
 def apply_vero_style():
     st.markdown("""
     <style>
-        /* EXTERMINA A BARRA LATERAL, NAVEGAÇÃO E O CABEÇALHO PADRÃO */
+        /* Oculta o cabeçalho e rodapé padrão do Streamlit */
         header {visibility: hidden !important;}
         footer {visibility: hidden !important;}
         
-        /* Remove a navegação automática da pasta 'pages/' e a seta de abrir */
-        [data-testid="stSidebarNav"] {display: none !important;}
-        [data-testid="collapsedControl"] {display: none !important;}
-        section[data-testid="stSidebar"] {display: none !important; width: 0px !important;}
-        
-        /* Fundo escuro padrão VERO */
+        /* 1. FUNDO GERAL DO APP (Cinza ultra escuro, como na referência) */
         .stApp {
-            background-color: #0b0f19;
-            color: #ffffff;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #17181c !important; 
         }
 
-        /* Menu Superior (Abas) - Design Seguro */
-        .stTabs [data-baseweb="tab-list"] {
-            background-color: #1a2235;
-            padding: 10px;
-            border-radius: 15px;
-            gap: 10px;
-            border: 1px solid #2d3748;
+        /* 2. ESTILO DOS CARDS (Transforma st.container(border=True) em Cards modernos) */
+        div[data-testid="stVerticalBlockBorderWrapper"] {
+            background-color: #26272f !important; /* Cinza um pouco mais claro para destacar */
+            border: none !important;              /* Remove a linha de borda dura */
+            border-radius: 16px !important;       /* Cantos bem arredondados */
+            padding: 5px !important;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3) !important; /* Sombra suave de profundidade */
         }
 
-        .stTabs [data-baseweb="tab"] {
-            color: #a0aec0;
-            font-weight: 600;
-            padding: 10px 20px;
-            border-radius: 8px;
-            background-color: transparent;
-            border: none;
+        /* 3. CORES DE TEXTO PADRÃO */
+        h1, h2, h3, p, span, label, li {
+            color: #e2e8f0 !important;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
         }
 
-        .stTabs [aria-selected="true"] {
-            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+        /* 4. CAMPOS DE INPUT (Caixas de texto e números) */
+        .stTextInput input, .stNumberInput input, div[data-baseweb="select"], .stTextArea textarea {
+            background-color: #1e1e24 !important; /* Fundo mais escuro para afundar no card */
             color: white !important;
-        }
-
-        /* Caixas de Texto e Inputs Visíveis */
-        .stTextInput input, .stNumberInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea {
-            background-color: #1a2235 !important;
-            color: white !important;
-            border: 1px solid #2d3748 !important;
+            border: 1px solid #3b3d4a !important;
             border-radius: 8px !important;
         }
 
-        /* Botão Principal */
+        /* 5. BOTÕES ESTILO DASHBOARD (Borda Ciano) */
         .stButton > button {
-            background-color: #1a2235 !important;
-            color: white !important;
-            border: 1px solid #2d3748 !important;
-            border-radius: 10px !important;
-            height: 50px !important;
+            background-color: #26272f !important;
+            color: #4bc0c0 !important; /* Cor ciano da sua referência */
+            border: 1px solid #4bc0c0 !important; 
+            border-radius: 8px !important;
+            height: 45px !important;
             font-weight: bold !important;
             transition: 0.3s;
         }
 
+        /* Efeito Hover: Quando passa o mouse no botão, ele preenche de Ciano */
         .stButton > button:hover {
-            border-color: #3b82f6 !important;
-            background-color: #2563eb !important;
+            background-color: #4bc0c0 !important;
+            color: #17181c !important;
+        }
+        
+        /* Ajuste do fundo de itens selecionados no multiselect */
+        span[data-baseweb="tag"] {
+            background-color: #4bc0c0 !important;
+            color: #17181c !important;
         }
     </style>
     """, unsafe_allow_html=True)
