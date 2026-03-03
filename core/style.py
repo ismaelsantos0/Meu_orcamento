@@ -3,69 +3,81 @@ import streamlit as st
 def apply_vero_style():
     st.markdown("""
     <style>
-        /* Oculta o cabeçalho e rodapé padrão do Streamlit */
+        /* Oculta o cabeçalho e rodapé */
         header {visibility: hidden !important;}
         footer {visibility: hidden !important;}
         
-        /* 1. FUNDO GERAL COM GRADIENTE (Muda o preto chapado para um fundo azul-petróleo escuro profundo) */
+        /* 1. FUNDO GERAL SUPER CLEAN (Cinza chumbo sólido) */
         .stApp {
-            background: radial-gradient(circle at top left, #1a2a3a, #17181c, #0f141a) !important; 
+            background-color: #131418 !important; 
         }
 
-        /* 2. EFEITO GLASSMORPHISM NOS CARDS (O Segredo do Vidro Fosco) */
+        /* 2. CARDS MINIMALISTAS */
         div[data-testid="stVerticalBlockBorderWrapper"] {
-            background: rgba(30, 32, 38, 0.45) !important; /* Fundo quase transparente */
-            backdrop-filter: blur(16px) !important;        /* O desfoque que cria o vidro */
-            -webkit-backdrop-filter: blur(16px) !important;
-            border: 1px solid rgba(255, 255, 255, 0.08) !important; /* Borda branca bem suave dando brilho */
-            border-radius: 20px !important;       /* Cantos bem redondos */
-            padding: 10px !important;
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4) !important; /* Sombra projetada para dar profundidade */
+            background-color: #1c1d24 !important; /* Um tom um pouco mais claro que o fundo */
+            border: 1px solid #2b2d38 !important; /* Borda super fina e discreta */
+            border-radius: 12px !important;       /* Cantos arredondados, mas não exagerados */
+            padding: 15px !important;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3) !important; /* Sombra suave embaixo */
         }
 
-        /* 3. CORES DE TEXTO PADRÃO */
+        /* 3. TIPOGRAFIA CLEAN */
         h1, h2, h3, p, span, label, li {
-            color: #e2e8f0 !important;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
-        }
-
-        /* 4. CAMPOS DE INPUT (Ficam escuros e semi-transparentes para não quebrar o vidro) */
-        .stTextInput input, .stNumberInput input, div[data-baseweb="select"], .stTextArea textarea {
-            background: rgba(0, 0, 0, 0.25) !important; 
-            color: white !important;
-            border: 1px solid rgba(255, 255, 255, 0.1) !important;
-            border-radius: 10px !important;
+            color: #d1d5db !important; /* Branco levemente acinzentado para não doer a vista */
+            font-family: 'Inter', 'Segoe UI', sans-serif !important;
         }
         
-        /* Quando o usuário clica para digitar, a borda brilha em ciano */
+        /* Título VERO Smart Systems */
+        h1 {
+            color: #ffffff !important;
+            font-weight: 700 !important;
+        }
+
+        /* 4. CAMPOS DE DIGITAÇÃO LIMPOS */
+        .stTextInput input, .stNumberInput input, div[data-baseweb="select"], .stTextArea textarea {
+            background-color: #131418 !important; /* Fundo do input afunda na mesma cor da tela */
+            color: #ffffff !important;
+            border: 1px solid #2b2d38 !important;
+            border-radius: 8px !important;
+            padding: 12px !important;
+        }
+        
+        /* Foco ao digitar (A linha fica Ciano) */
         .stTextInput input:focus, .stNumberInput input:focus {
             border: 1px solid #4bc0c0 !important;
-            box-shadow: 0 0 8px rgba(75, 192, 192, 0.3) !important;
+            box-shadow: none !important;
         }
 
-        /* 5. BOTÕES PREMIUM COM GRADIENTE */
+        /* 5. BOTÕES "OUTLINE" MODERNOS */
         .stButton > button {
-            background: linear-gradient(135deg, rgba(38, 39, 47, 0.8), rgba(23, 24, 28, 0.8)) !important;
+            background-color: transparent !important;
             color: #4bc0c0 !important; 
-            border: 1px solid rgba(75, 192, 192, 0.4) !important; 
-            border-radius: 12px !important;
-            height: 48px !important;
-            font-weight: bold !important;
-            transition: all 0.3s ease-in-out !important;
+            border: 1px solid #4bc0c0 !important; 
+            border-radius: 8px !important;
+            height: 45px !important;
+            font-weight: 600 !important;
+            letter-spacing: 1px !important;
+            transition: 0.2s !important;
         }
 
-        /* Efeito Hover do Botão: Acende ao passar o mouse */
+        /* Efeito Hover do Botão */
         .stButton > button:hover {
-            background: #4bc0c0 !important;
-            color: #17181c !important;
-            box-shadow: 0 0 15px rgba(75, 192, 192, 0.5) !important;
-            border: 1px solid #4bc0c0 !important; 
+            background-color: #4bc0c0 !important;
+            color: #131418 !important;
         }
         
-        /* Ajuste sutil para os botões das Abas de Login (Entrar / Criar Conta) */
+        /* 6. ESTILIZANDO AS ABAS (Login / Cadastro) */
+        button[data-baseweb="tab"] {
+            background-color: transparent !important;
+            color: #6b7280 !important;
+        }
+        button[data-baseweb="tab"][aria-selected="true"] {
+            color: #4bc0c0 !important;
+            border-bottom: 2px solid #4bc0c0 !important;
+        }
         button[data-baseweb="tab"] p {
             font-size: 16px !important;
-            font-weight: 500 !important;
+            font-weight: 600 !important;
         }
     </style>
     """, unsafe_allow_html=True)
