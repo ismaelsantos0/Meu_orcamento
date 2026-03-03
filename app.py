@@ -3,6 +3,7 @@ import hashlib
 import re
 from streamlit_option_menu import option_menu
 
+# Mantemos a barra lateral colapsada e o layout largo
 st.set_page_config(page_title="VERO Smart Systems", layout="wide", initial_sidebar_state="collapsed")
 
 from core.db import get_conn
@@ -22,7 +23,8 @@ if not st.session_state.logged_in:
     st.markdown("<br><br>", unsafe_allow_html=True)
     _, col_login, _ = st.columns([1, 1.2, 1])
     with col_login:
-        st.markdown("<div style='text-align:center;'><h1>VERO</h1><p style='color:#3b82f6; letter-spacing:5px;'>SMART SYSTEMS</p></div><br>", unsafe_allow_html=True)
+        # Título da tela de Login com detalhe na cor nova
+        st.markdown("<div style='text-align:center;'><h1>VERO</h1><p style='color:#4bc0c0; letter-spacing:5px;'>SMART SYSTEMS</p></div><br>", unsafe_allow_html=True)
         tab_login, tab_cadastro = st.tabs(["🔐 Entrar", "📝 Criar Conta"])
         
         with tab_login:
@@ -76,7 +78,7 @@ with conn.cursor() as cur:
     cur.execute("SELECT nome_empresa, whatsapp, logo, pagamento_padrao, garantia_padrao, validade_dias FROM config_empresa WHERE usuario_id = %s", (user_id,))
     cfg = cur.fetchone() or ("RR Smart Soluções", "559584187832", None, "A combinar", "90 dias", 7)
 
-# --- MENU DE NAVEGAÇÃO PREMIUM ---
+# --- MENU DE NAVEGAÇÃO PREMIUM NO TOPO ---
 aba_selecionada = option_menu(
     menu_title=None,
     options=["Gerador", "Histórico", "Preços", "Textos", "Configs", "Admin"],
@@ -85,10 +87,28 @@ aba_selecionada = option_menu(
     default_index=0,
     orientation="horizontal",
     styles={
-        "container": {"padding": "0!important", "background-color": "#1a2235", "border-radius": "15px", "border": "1px solid #2d3748", "margin-bottom": "25px"},
-        "icon": {"color": "#3b82f6", "font-size": "18px"}, 
-        "nav-link": {"font-size": "15px", "text-align": "center", "margin":"0px", "--hover-color": "#262933", "color": "#a0aec0", "font-weight": "600"},
-        "nav-link-selected": {"background-color": "#3b82f6", "color": "white"},
+        "container": {
+            "padding": "0!important", 
+            "background-color": "#26272f", /* Mesma cor dos cards */
+            "border-radius": "16px", 
+            "margin-bottom": "25px",
+            "box-shadow": "0 4px 15px rgba(0, 0, 0, 0.2)"
+        },
+        "icon": {"color": "#a0aec0", "font-size": "18px"}, 
+        "nav-link": {
+            "font-size": "15px", 
+            "text-align": "center", 
+            "margin":"5px", 
+            "--hover-color": "#3b3d4a", 
+            "color": "#a0aec0", 
+            "font-weight": "600",
+            "border-radius": "10px"
+        },
+        "nav-link-selected": {
+            "background-color": "#4bc0c0", /* A cor ciano da sua referência */
+            "color": "#17181c",            /* Texto escuro no botão ativo para contraste */
+            "font-weight": "bold"
+        },
     }
 )
 
