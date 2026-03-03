@@ -89,7 +89,7 @@ aba_selecionada = option_menu(
     styles={
         "container": {
             "padding": "0!important", 
-            "background-color": "#26272f", /* Mesma cor dos cards */
+            "background-color": "#26272f", # Mesma cor dos cards
             "border-radius": "16px", 
             "margin-bottom": "25px",
             "box-shadow": "0 4px 15px rgba(0, 0, 0, 0.2)"
@@ -105,8 +105,8 @@ aba_selecionada = option_menu(
             "border-radius": "10px"
         },
         "nav-link-selected": {
-            "background-color": "#4bc0c0", /* A cor ciano da sua referência */
-            "color": "#17181c",            /* Texto escuro no botão ativo para contraste */
+            "background-color": "#4bc0c0", # A cor ciano da sua referência
+            "color": "#17181c",            # Texto escuro no botão ativo para contraste
             "font-weight": "bold"
         },
     }
