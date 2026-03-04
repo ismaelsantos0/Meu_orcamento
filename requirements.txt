@@ -6,3 +6,5 @@ psycopg2-binary>=2.9.10
 streamlit-option-menu
 fastapi
 uvicorn
+sqlalchemy
+psycopg2-binary
