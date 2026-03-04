@@ -2,7 +2,7 @@ import os
 import io
 from fastapi import FastAPI, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import create_engine, Column, Integer, String, Float, text
+from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,13 +23,15 @@ engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# --- MODELO SIMPLIFICADO (Para evitar erros de colunas extras) ---
+# --- MODELO EXATAMENTE IGUAL À SUA FOTO ---
 class Usuario(Base):
     __tablename__ = "usuarios"
     id = Column(Integer, primary_key=True)
     email = Column(String)
+    telefone = Column(String)
     senha = Column(String)
-    nome = Column(String)
+    is_admin = Column(Boolean)
+    data_cadastro = Column(String)
 
 class PerfilEmpresa(Base):
     __tablename__ = "perfil_empresa"
@@ -54,39 +56,51 @@ def get_db():
     try: yield db
     finally: db.close()
 
-# --- ROTA DE REPARAÇÃO (SQL PURO - RESOLVE OS 72 BYTES) ---
+# --- ROTA DE REPARAÇÃO (A MARRETA DO SQL PURO) ---
 @app.get("/api/setup-admin")
-def setup_admin(db: Session = Depends(get_db)):
-    try:
-        # Geramos o hash correto para Admin@123
-        novo_hash = pwd_context.hash("Admin@123")
-        
-        # Usamos SQL puro para não dar erro com as colunas 'is_admin' ou 'data_cadastro'
-        query = text("UPDATE usuarios SET senha = :h WHERE email = :e")
-        db.execute(query, {"h": novo_hash, "e": "ismaelifrr@gmail.com"})
-        db.commit()
-        
-        return {"status": "SUCESSO! Senha atualizada no banco. Agora você pode logar."}
-    except Exception as e:
-        db.rollback()
-        return {"error": f"Erro: {str(e)}"}
+def setup_admin():
+    with engine.begin() as conn:
+        try:
+            # Geramos o hash perfeito de "Admin@123"
+            novo_hash = pwd_context.hash("Admin@123")
+            
+            # Trocamos o texto puro pelo Hash direto no banco, sem perguntar nada
+            query = text("UPDATE usuarios SET senha = :h WHERE email = 'ismaelifrr@gmail.com'")
+            conn.execute(query, {"h": novo_hash})
+            
+            return {"status": "SUCESSO! O banco e o código agora estão em perfeita harmonia."}
+        except Exception as e:
+            return {"error": f"Erro: {str(e)}"}
 
-# --- LOGIN ---
+# --- LOGIN (CORRIGIDO PARA NÃO PEDIR O 'NOME') ---
 class LoginRequest(BaseModel):
     email: str
     senha: str
 
 @app.post("/api/login")
 def login(dados: LoginRequest, db: Session = Depends(get_db)):
-    # Busca apenas os campos que precisamos
     user = db.query(Usuario).filter(Usuario.email == dados.email.strip().lower()).first()
     
-    if not user or not pwd_context.verify(dados.senha.strip(), user.senha):
-        raise HTTPException(status_code=401, detail="Credenciais incorretas")
-        
-    return {"access_token": "vero_2026", "user": {"nome": user.nome}}
+    # Bloco try-except para caso ele tente ler o hash gigante do outro usuário
+    try:
+        senha_valida = pwd_context.verify(dados.senha.strip(), user.senha)
+    except Exception:
+        senha_valida = False
 
-# --- PDF E DADOS (100% DINÂMICOS) ---
+    if not user or not senha_valida:
+        raise HTTPException(status_code=401, detail="Credenciais invalidas")
+        
+    # RETORNA O TELEFONE NO LUGAR DO NOME, POIS O NOME NÃO EXISTE NO BANCO
+    return {
+        "access_token": "vero_2026", 
+        "user": {
+            "email": user.email, 
+            "telefone": user.telefone, 
+            "is_admin": user.is_admin
+        }
+    }
+
+# --- PDF E DADOS DINÂMICOS ---
 @app.get("/api/servicos")
 def listar(db: Session = Depends(get_db)):
     return db.query(Servico).all()
@@ -98,12 +112,11 @@ def perfil(db: Session = Depends(get_db)):
 @app.post("/api/gerar-orcamento")
 async def gerar(pedido: dict, db: Session = Depends(get_db)):
     empresa = db.query(PerfilEmpresa).first()
-    if not empresa: raise HTTPException(status_code=400, detail="Perfil ausente")
+    if not empresa: raise HTTPException(status_code=400, detail="Perfil ausente no banco")
     
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
-    p.drawString(50, 800, empresa.nome_fantasia.upper())
-    p.drawString(50, 785, f"Tel: {empresa.telefone}")
+    p.drawString(50, 800, str(empresa.nome_fantasia).upper())
     p.showPage()
     p.save()
     buffer.seek(0)
