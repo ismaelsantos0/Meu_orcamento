@@ -9,6 +9,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
+from passlib.context import CryptContext
+
+# --- CONFIGURAÇÃO DE SEGURANÇA (BCRYPT) ---
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # --- CONFIGURAÇÃO DO BANCO DE DADOS ---
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -25,7 +29,7 @@ class Usuario(Base):
     __tablename__ = "usuarios"
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
-    senha = Column(String, nullable=False) 
+    senha = Column(String, nullable=False) # Armazena o HASH aqui
     nome = Column(String, nullable=False)
 
 class PerfilEmpresa(Base):
@@ -87,13 +91,12 @@ def get_db():
 
 @app.get("/")
 def health_check():
-    return {"status": "Online", "empresa": "RR Smart Soluções"}
+    return {"status": "Online", "mode": "Enterprise (Hash Enabled)"}
 
 @app.post("/api/login")
 def login(dados: LoginRequest, db: Session = Depends(get_db)):
-    # Limpa espaços em branco e padroniza e-mail para minúsculo
     email_limpo = dados.email.strip().lower()
-    senha_limpa = dados.senha.strip()
+    senha_digitada = dados.senha.strip()
     
     print(f"DEBUG: Tentativa de login para {email_limpo}")
     
@@ -101,14 +104,21 @@ def login(dados: LoginRequest, db: Session = Depends(get_db)):
     
     if not usuario:
         print(f"DEBUG: Usuário {email_limpo} não encontrado no banco.")
-        raise HTTPException(status_code=401, detail="Usuário não cadastrado")
+        raise HTTPException(status_code=401, detail="Credenciais inválidas")
     
-    # Compara a senha limpa com a do banco
-    if usuario.senha.strip() != senha_limpa:
+    # VERIFICAÇÃO DO HASH
+    try:
+        # A passlib verifica se a 'senha_digitada' gera o mesmo hash que está no 'usuario.senha'
+        senha_valida = pwd_context.verify(senha_digitada, usuario.senha)
+    except Exception as e:
+        print(f"DEBUG: Erro na verificação do hash: {e}")
+        senha_valida = False
+
+    if not senha_valida:
         print(f"DEBUG: Senha incorreta para {email_limpo}")
-        raise HTTPException(status_code=401, detail="Senha inválida")
+        raise HTTPException(status_code=401, detail="Credenciais inválidas")
     
-    print(f"DEBUG: Sucesso! {usuario.nome} logou.")
+    print(f"DEBUG: Sucesso! {usuario.nome} logou com hash verificado.")
     return {
         "access_token": "vero_auth_2026_active",
         "user": {"nome": usuario.nome, "email": usuario.email}
@@ -122,14 +132,14 @@ def listar_servicos(db: Session = Depends(get_db)):
 def obter_perfil(db: Session = Depends(get_db)):
     perfil = db.query(PerfilEmpresa).first()
     if not perfil:
-        raise HTTPException(status_code=404, detail="Perfil não configurado")
+        raise HTTPException(status_code=404, detail="Perfil não configurado no banco")
     return perfil
 
 @app.post("/api/gerar-orcamento")
 async def gerar_orcamento(pedido: RequisicaoOrcamento, db: Session = Depends(get_db)):
     empresa = db.query(PerfilEmpresa).first()
     if not empresa:
-        raise HTTPException(status_code=400, detail="Perfil da empresa ausente no banco.")
+        raise HTTPException(status_code=400, detail="Perfil da empresa ausente.")
 
     total_materiais = sum(i.quantidade * i.preco_unitario for i in pedido.itens)
     total_geral = total_materiais + pedido.valor_mao_de_obra
@@ -137,19 +147,17 @@ async def gerar_orcamento(pedido: RequisicaoOrcamento, db: Session = Depends(get
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
     
-    # Cabeçalho RR Smart
+    # Layout RR Smart Soluções
     p.setFont("Helvetica-Bold", 16)
     p.drawString(50, 800, empresa.nome_fantasia.upper())
     p.setFont("Helvetica", 10)
     p.drawString(50, 785, f"WhatsApp: {empresa.telefone} | Insta: {empresa.instagram}")
     p.line(50, 775, 550, 775)
     
-    # Detalhes do Cliente
     p.setFont("Helvetica-Bold", 12)
     p.drawString(50, 750, f"CLIENTE: {pedido.nome_cliente}")
     p.drawString(50, 735, f"SERVIÇO: {pedido.categoria_servico}")
     
-    # Corpo do Orçamento
     y = 700
     p.drawString(50, y, "ITEM")
     p.drawRightString(540, y, "VALOR")
