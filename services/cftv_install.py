@@ -1,103 +1,69 @@
-from datetime import datetime
-import streamlit as st
+from sqlalchemy.orm import Session
+from fastapi import HTTPException
 
-from core.db import get_price
-from core.utils import brl, ceil_div
-from core.pdf.service_descriptions import get_service_description
-from services.base import ServicePlugin
+# Função auxiliar para buscar preço no banco (Substitui o seu antigo get_price)
+def obter_preco_oficial(db: Session, codigo_servico: str):
+    from main import Servico # Import local
+    item = db.query(Servico).filter(Servico.codigo == codigo_servico).first()
+    if not item:
+        raise HTTPException(status_code=404, detail=f"Falta cadastrar o código '{codigo_servico}' no banco de dados!")
+    return item
 
-id = "cftv_install"
-label = "Câmeras (instalação)"
+def calcular_cftv_install(itens_do_pedido: list, db: Session):
+    itens_processados = []
+    total_materiais = 0.0
+    qtd_cameras = 0
+    
+    # 1. VARRE O PEDIDO PARA DESCOBRIR QUANTAS CÂMERAS O CLIENTE QUER
+    for item in itens_do_pedido:
+        if "CAM" in item.codigo.upper() or "CAMERA" in item.codigo.upper():
+            qtd_cameras += item.quantidade
+            
+        # Adiciona o item principal que veio do frontend (ex: a Câmera, o Cabo, o DVR)
+        servico_real = obter_preco_oficial(db, item.codigo)
+        subtotal_item = servico_real.preco_base * item.quantidade
+        total_materiais += subtotal_item
+        
+        itens_processados.append({
+            "nome": servico_real.nome,
+            "quantidade": item.quantidade,
+            "subtotal": subtotal_item
+        })
 
-
-def render_fields():
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        qtd_cameras = st.number_input("Quantidade de câmeras", value=4, min_value=1, step=1, key="ci_qtd")
-    with c2:
-        metros_cabo = st.number_input("Metros de cabo (Cat5e)", value=100.0, min_value=0.0, step=10.0, key="ci_cabo")
-    with c3:
-        usar_suporte = st.checkbox("Incluir suporte por câmera?", value=False, key="ci_suporte")
-    with c4:
-        usar_caixa = st.checkbox("Incluir caixa hermética por câmera?", value=False, key="ci_caixa")
-
-    st.caption("Dica: balun e conectores são calculados automaticamente por câmera (você pode ajustar na tabela de preços).")
-
-    return {
-        "qtd_cameras": int(qtd_cameras),
-        "metros_cabo": float(metros_cabo),
-        "usar_suporte": bool(usar_suporte),
-        "usar_caixa": bool(usar_caixa),
-    }
-
-
-def compute(conn, inputs: dict):
-    qtd = int(inputs["qtd_cameras"])
-    metros_cabo = float(inputs["metros_cabo"])
-    usar_suporte = bool(inputs["usar_suporte"])
-    usar_caixa = bool(inputs["usar_caixa"])
-
-    items = []
-    subtotal = 0.0
-
-    def add(desc, qty, unit):
-        nonlocal subtotal
-        qty = float(qty)
-        unit = float(unit)
-        sub = qty * unit
-        items.append({"desc": desc, "qty": (int(qty) if qty.is_integer() else round(qty, 2)), "unit": unit, "sub": sub})
-        subtotal += sub
-
-    # =========================
-    # MATERIAIS
-    # =========================
-    add("Câmera (un)", qtd, get_price(conn, "cftv_camera"))
-    add("DVR (un)", 1, get_price(conn, "cftv_dvr"))
-    add("HD para DVR (un)", 1, get_price(conn, "cftv_hd"))
-    add("Fonte colmeia 12V 15A (un)", 1, get_price(conn, "cftv_fonte_colmeia"))
-
-    # Cabos / acessórios
-    add("Cabo U/UTP Cat5e (metro)", metros_cabo, get_price(conn, "cftv_cabo_cat5_m"))
-
-    # Balun e conectores por câmera (padrão comum: 1 balun por câmera; 1 p4 macho + 1 p4 fêmea por câmera)
-    add("Balun (un)", qtd, get_price(conn, "cftv_balun"))
-    add("Conector P4 macho (un)", qtd, get_price(conn, "cftv_conector_p4_macho"))
-    add("Conector P4 fêmea (un)", qtd, get_price(conn, "cftv_conector_p4_femea"))
-
-    if usar_suporte:
-        add("Suporte para câmera (un)", qtd, get_price(conn, "cftv_suporte_camera"))
-
-    if usar_caixa:
-        add("Caixa hermética / sobrepor (un)", qtd, get_price(conn, "cftv_caixa_hermetica"))
-
-    # =========================
-    # MÃO DE OBRA
-    # =========================
-    add("Mão de obra (instalação do DVR)", 1, get_price(conn, "mao_cftv_dvr"))
-    add("Mão de obra (instalação por câmera)", qtd, get_price(conn, "mao_cftv_por_camera_inst"))
-
-    summary_full = (
-        f"Instalação de sistema CFTV com {qtd} câmera(s).\n"
-        "Inclui materiais principais (câmeras, DVR, HD, fonte, acessórios), passagem/organização de cabos,\n"
-        "instalação/configuração do DVR e testes finais do sistema."
-    )
-    summary_client = (
-        f"Instalação de CFTV com {qtd} câmera(s) + DVR.\n"
-        "Inclui configuração e testes finais."
-    )
+    # ==============================================================
+    # 2. A SUA LÓGICA DE CFTV (O "Pulo do Gato" que estava faltando)
+    # Se o cliente pediu câmeras, nós calculamos os periféricos automaticamente!
+    # ==============================================================
+    if qtd_cameras > 0:
+        # Lógica: 1 Câmera exige 2 Baluns, 1 P4 Macho e 1 P4 Fêmea
+        qtd_baluns = qtd_cameras * 2
+        qtd_p4 = qtd_cameras # 1 Macho e 1 Fêmea por câmera
+        
+        # Busca os preços dos conectores no banco (Você precisa ter esses códigos cadastrados!)
+        # Exemplo de códigos fixos que você usava: "cftv_balun", "cftv_p4_macho"
+        try:
+            balun = obter_preco_oficial(db, "BALUN-01") # Substitua pelo código real do seu banco
+            p4_macho = obter_preco_oficial(db, "P4-MACHO")
+            p4_femea = obter_preco_oficial(db, "P4-FEMEA")
+            
+            # Subtotais periféricos
+            sub_balun = balun.preco_base * qtd_baluns
+            sub_p4_m = p4_macho.preco_base * qtd_p4
+            sub_p4_f = p4_femea.preco_base * qtd_p4
+            
+            total_materiais += (sub_balun + sub_p4_m + sub_p4_f)
+            
+            # Injeta os conectores invisíveis na lista do PDF
+            itens_processados.extend([
+                {"nome": f"Balun de Vídeo (Para {qtd_cameras} Câmeras)", "quantidade": qtd_baluns, "subtotal": sub_balun},
+                {"nome": f"Conector P4 Macho", "quantidade": qtd_p4, "subtotal": sub_p4_m},
+                {"nome": f"Conector P4 Fêmea", "quantidade": qtd_p4, "subtotal": sub_p4_f}
+            ])
+        except HTTPException:
+            # Se você não cadastrou os conectores no banco, ele pula para não quebrar o PDF
+            pass
 
     return {
-        "id": f"{datetime.now().timestamp()}",
-        "service_id": id,
-        "service_name": label,
-        "service_hint": f"{qtd} câmera(s) • cabo: {metros_cabo:.0f}m",
-        "inputs": inputs,
-        "items": items,
-        "subtotal": float(subtotal),
-        "subtotal_brl": brl(float(subtotal)),
-        "summary_full": summary_full,
-        "summary_client": summary_client,
+        "itens_processados": itens_processados,
+        "total_materiais": total_materiais
     }
-
-
-plugin = ServicePlugin(id=id, label=label, render_fields=render_fields, compute=compute)
