@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
-# --- DATABASE ENGINE ---
+# --- CONFIGURAÇÃO DO BANCO DE DADOS ---
 DATABASE_URL = os.getenv("DATABASE_URL")
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
@@ -19,7 +19,7 @@ engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# --- MODELS REAIS (SEM VALORES DEFAULT) ---
+# --- MODELOS DO BANCO (REAIS E SEM DEFAULTS) ---
 
 class Usuario(Base):
     __tablename__ = "usuarios"
@@ -34,7 +34,6 @@ class PerfilEmpresa(Base):
     nome_fantasia = Column(String, nullable=False)
     telefone = Column(String, nullable=False)
     instagram = Column(String, nullable=False)
-    cnpj = Column(String, nullable=True) # Adicionado para mais profissionalismo
 
 class Servico(Base):
     __tablename__ = "servicos"
@@ -46,7 +45,8 @@ class Servico(Base):
 
 Base.metadata.create_all(bind=engine)
 
-# --- SCHEMAS ---
+# --- SCHEMAS DE VALIDAÇÃO ---
+
 class LoginRequest(BaseModel):
     email: str
     senha: str
@@ -63,6 +63,8 @@ class RequisicaoOrcamento(BaseModel):
     categoria_servico: str
     itens: list[ItemPedido]
     valor_mao_de_obra: float
+
+# --- INICIALIZAÇÃO APP ---
 
 app = FastAPI(title="VERO Custom API")
 
@@ -81,46 +83,90 @@ def get_db():
     finally:
         db.close()
 
-# --- ROTAS PERSONALIZADAS ---
+# --- ROTAS ---
+
+@app.get("/")
+def health_check():
+    return {"status": "Online", "empresa": "RR Smart Soluções"}
 
 @app.post("/api/login")
 def login(dados: LoginRequest, db: Session = Depends(get_db)):
-    usuario = db.query(Usuario).filter(Usuario.email == dados.email).first()
-    # Comparação direta conforme solicitado para teste
-    if not usuario or usuario.senha != dados.senha:
-        raise HTTPException(status_code=401, detail="Acesso Negado: Credenciais Inválidas")
+    # Limpa espaços em branco e padroniza e-mail para minúsculo
+    email_limpo = dados.email.strip().lower()
+    senha_limpa = dados.senha.strip()
     
+    print(f"DEBUG: Tentativa de login para {email_limpo}")
+    
+    usuario = db.query(Usuario).filter(Usuario.email == email_limpo).first()
+    
+    if not usuario:
+        print(f"DEBUG: Usuário {email_limpo} não encontrado no banco.")
+        raise HTTPException(status_code=401, detail="Usuário não cadastrado")
+    
+    # Compara a senha limpa com a do banco
+    if usuario.senha.strip() != senha_limpa:
+        print(f"DEBUG: Senha incorreta para {email_limpo}")
+        raise HTTPException(status_code=401, detail="Senha inválida")
+    
+    print(f"DEBUG: Sucesso! {usuario.nome} logou.")
     return {
-        "token": "VERO_AUTH_TOKEN_ACTIVE",
+        "access_token": "vero_auth_2026_active",
         "user": {"nome": usuario.nome, "email": usuario.email}
     }
+
+@app.get("/api/servicos")
+def listar_servicos(db: Session = Depends(get_db)):
+    return db.query(Servico).all()
 
 @app.get("/api/perfil")
 def obter_perfil(db: Session = Depends(get_db)):
     perfil = db.query(PerfilEmpresa).first()
     if not perfil:
-        raise HTTPException(status_code=404, detail="Perfil da Empresa não configurado no Banco")
+        raise HTTPException(status_code=404, detail="Perfil não configurado")
     return perfil
 
 @app.post("/api/gerar-orcamento")
 async def gerar_orcamento(pedido: RequisicaoOrcamento, db: Session = Depends(get_db)):
     empresa = db.query(PerfilEmpresa).first()
     if not empresa:
-        raise HTTPException(status_code=400, detail="Configure o Perfil da Empresa antes de gerar orçamentos")
+        raise HTTPException(status_code=400, detail="Perfil da empresa ausente no banco.")
 
-    total_geral = sum(i.quantidade * i.preco_unitario for i in pedido.itens) + pedido.valor_mao_de_obra
+    total_materiais = sum(i.quantidade * i.preco_unitario for i in pedido.itens)
+    total_geral = total_materiais + pedido.valor_mao_de_obra
     
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
     
-    # PDF Customizado com dados REAIS do banco
-    p.setFont("Helvetica-Bold", 18)
+    # Cabeçalho RR Smart
+    p.setFont("Helvetica-Bold", 16)
     p.drawString(50, 800, empresa.nome_fantasia.upper())
     p.setFont("Helvetica", 10)
-    p.drawString(50, 785, f"Contato: {empresa.telefone} | Insta: {empresa.instagram}")
+    p.drawString(50, 785, f"WhatsApp: {empresa.telefone} | Insta: {empresa.instagram}")
     p.line(50, 775, 550, 775)
     
-    # ... resto da lógica do PDF ...
+    # Detalhes do Cliente
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(50, 750, f"CLIENTE: {pedido.nome_cliente}")
+    p.drawString(50, 735, f"SERVIÇO: {pedido.categoria_servico}")
+    
+    # Corpo do Orçamento
+    y = 700
+    p.drawString(50, y, "ITEM")
+    p.drawRightString(540, y, "VALOR")
+    p.line(50, y-5, 550, y-5)
+    y -= 25
+    
+    for item in pedido.itens:
+        p.setFont("Helvetica", 11)
+        p.drawString(50, y, f"{item.quantidade}x {item.nome}")
+        p.drawRightString(540, y, f"R$ {item.quantidade * item.preco_unitario:.2f}")
+        y -= 20
+        
+    p.line(50, y, 550, y)
+    y -= 30
+    p.setFont("Helvetica-Bold", 14)
+    p.drawString(300, y, f"TOTAL GERAL: R$ {total_geral:.2f}")
+    
     p.showPage()
     p.save()
     buffer.seek(0)
