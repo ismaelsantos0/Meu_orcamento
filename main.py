@@ -3,7 +3,7 @@ import io
 import hashlib
 from fastapi import FastAPI, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, text
+from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,7 +24,7 @@ engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# --- MODELOS (Fiéis ao seu banco de dados) ---
+# --- MODELOS ---
 class Usuario(Base):
     __tablename__ = "usuarios"
     id = Column(Integer, primary_key=True)
@@ -56,25 +56,6 @@ def get_db():
     db = SessionLocal()
     try: yield db
     finally: db.close()
-
-# --- ROTA DE REPARAÇÃO (ALVO: vssdamassa) ---
-@app.get("/api/setup-admin")
-def setup_admin():
-    with engine.begin() as conn:
-        try:
-            # Gera o hash limpo para Admin@123
-            novo_hash = gerar_hash("Admin@123")
-            
-            # Atualiza direto no banco apenas o usuário vssdamassa
-            query = text("UPDATE usuarios SET senha = :h WHERE email = 'vssdamassa@gmail.com'")
-            resultado = conn.execute(query, {"h": novo_hash})
-            
-            if resultado.rowcount == 0:
-                return {"error": "Usuário vssdamassa@gmail.com não encontrado no banco."}
-                
-            return {"status": "FEITO! Senha do vssdamassa resetada para Admin@123 com sucesso."}
-        except Exception as e:
-            return {"error": f"Erro fatal: {str(e)}"}
 
 # --- LOGIN ---
 class LoginRequest(BaseModel):
@@ -120,8 +101,9 @@ async def gerar(pedido: dict, db: Session = Depends(get_db)):
     
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
-    # Puxa o nome da empresa dinamicamente
+    p.setFont("Helvetica-Bold", 16)
     p.drawString(50, 800, str(empresa.nome_fantasia).upper())
+    p.setFont("Helvetica", 10)
     p.drawString(50, 785, f"Contato: {empresa.telefone} | Instagram: {empresa.instagram}")
     p.showPage()
     p.save()
