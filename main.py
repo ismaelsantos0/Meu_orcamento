@@ -1,94 +1,146 @@
-from fastapi import FastAPI
+import os
+import io
+from fastapi import FastAPI, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import create_engine, Column, Integer, String, Float, Text, ForeignKey
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, Session
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-import io
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
-app = FastAPI(title="VERO Smart Systems API", version="1.0")
+# --- CONFIGURAÇÃO DO BANCO DE DADOS ---
+DATABASE_URL = os.getenv("DATABASE_URL")
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+# --- MODELOS DO BANCO DE DADOS (REGRAS DE PERFIL E PRODUTOS) ---
+
+class PerfilEmpresa(Base):
+    __tablename__ = "perfil_empresa"
+    id = Column(Integer, primary_key=True, index=True)
+    nome_fantasia = Column(String, default="RR Smart Soluções")
+    telefone = Column(String, default="+55 95 8418-7832")
+    instagram = Column(String, default="@rr_smart_solucoes")
+    logotipo_url = Column(String, nullable=True)
+
+class Servico(Base):
+    __tablename__ = "servicos"
+    id = Column(Integer, primary_key=True, index=True)
+    codigo = Column(String, unique=True, index=True)
+    nome = Column(String)
+    descricao = Column(Text)
+    preco_base = Column(Float)
+    categoria = Column(String) # Ex: CFTV, Alarme, Automação
+
+# Cria as tabelas no Railway
+Base.metadata.create_all(bind=engine)
+
+# --- SCHEMAS PARA O FASTAPI (PYDANTIC) ---
+
+class ItemPedido(BaseModel):
+    codigo: str
+    nome: str
+    quantidade: int
+    preco_unitario: float
+
+class RequisicaoOrcamento(BaseModel):
+    nome_cliente: str
+    whatsapp_cliente: str
+    categoria_servico: str
+    itens: list[ItemPedido]
+    valor_mao_de_obra: float
+
+# --- INICIALIZAÇÃO APP ---
+
+app = FastAPI(title="VERO Smart Systems API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-class ItemOrcamento(BaseModel):
-    id_produto: str
-    nome: str
-    quantidade: int
-    preco_unitario: float
+# Dependência para o Banco
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
-class PedidoOrcamento(BaseModel):
-    nome_cliente: str
-    whatsapp_cliente: str
-    categoria_servico: str
-    itens: list[ItemOrcamento]
-    valor_mao_de_obra: float
+# --- ROTAS ---
 
 @app.get("/")
-def home():
-    return {"status": "VERO API Online e Operante!"}
+def health_check():
+    return {"status": "Vero API Online", "database": "Conectado"}
+
+@app.get("/api/perfil")
+def obter_perfil(db: Session = Depends(get_db)):
+    perfil = db.query(PerfilEmpresa).first()
+    if not perfil:
+        # Cria um perfil padrão se o banco estiver vazio
+        novo_perfil = PerfilEmpresa()
+        db.add(novo_perfil)
+        db.commit()
+        return novo_perfil
+    return perfil
+
+@app.get("/api/servicos")
+def listar_servicos(db: Session = Depends(get_db)):
+    return db.query(Servico).all()
 
 @app.post("/api/gerar-orcamento")
-async def gerar_orcamento(pedido: PedidoOrcamento):
+async def gerar_orcamento(pedido: RequisicaoOrcamento, db: Session = Depends(get_db)):
+    # Busca dados da RR Smart Soluções no Banco
+    empresa = db.query(PerfilEmpresa).first()
+    
     total_materiais = sum(item.quantidade * item.preco_unitario for item in pedido.itens)
     total_geral = total_materiais + pedido.valor_mao_de_obra
     
-    # 1. Prepara a memória do servidor para criar o arquivo (sem salvar no HD)
+    # Geração do PDF via ReportLab
     buffer = io.BytesIO()
-    pdf = canvas.Canvas(buffer, pagesize=A4)
-    pdf.setTitle(f"Orcamento_{pedido.nome_cliente}.pdf")
-
-    # 2. Desenhando o Cabeçalho da Empresa
-    pdf.setFont("Helvetica-Bold", 16)
-    pdf.drawString(50, 800, "ORÇAMENTO DE SERVIÇOS")
-    pdf.setFont("Helvetica", 10)
-    pdf.drawString(50, 785, "RR Smart Soluções - Tecnologia e Automação")
-    pdf.drawString(50, 770, "WhatsApp: +55 95 8418-7832")
+    p = canvas.Canvas(buffer, pagesize=A4)
     
-    pdf.line(50, 755, 545, 755) # Linha divisória
-
-    # 3. Dados do Cliente
-    pdf.setFont("Helvetica-Bold", 12)
-    pdf.drawString(50, 730, f"Cliente: {pedido.nome_cliente}")
-    pdf.setFont("Helvetica", 12)
-    pdf.drawString(50, 710, f"Contato: {pedido.whatsapp_cliente}")
-    pdf.drawString(50, 690, f"Referência: Instalação de {pedido.categoria_servico}")
-
-    # 4. Tabela de Itens
-    pdf.drawString(50, 650, "Qtd   |   Descrição do Equipamento   |   Valor Unit.   |   Subtotal")
-    pdf.line(50, 640, 545, 640)
+    # Cabeçalho dinâmico vindo do Banco
+    p.setFont("Helvetica-Bold", 16)
+    p.drawString(50, 800, "ORÇAMENTO PROFISSIONAL")
+    p.setFont("Helvetica", 10)
+    p.drawString(50, 785, f"{empresa.nome_fantasia if empresa else 'RR Smart Soluções'}")
+    p.drawString(50, 770, f"WhatsApp: {empresa.telefone if empresa else '95 98418-7832'}")
     
-    y = 620
+    p.line(50, 755, 550, 755)
+    
+    # Dados do Cliente
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(50, 730, f"Cliente: {pedido.nome_cliente}")
+    p.setFont("Helvetica", 11)
+    p.drawString(50, 715, f"Contato: {pedido.whatsapp_cliente}")
+    
+    # Itens
+    y = 670
+    p.drawString(50, 690, "Descrição dos Serviços/Produtos")
+    p.line(50, 685, 550, 685)
+    
     for item in pedido.itens:
-        sub = item.quantidade * item.preco_unitario
-        linha = f"{item.quantidade:02d}    |   {item.nome[:30]:<30}   |   R$ {item.preco_unitario:.2f}   |   R$ {sub:.2f}"
-        pdf.drawString(50, y, linha)
-        y -= 25
-
-    # 5. Totais
-    pdf.line(50, y, 545, y)
-    y -= 20
-    pdf.drawString(300, y, f"Subtotal Materiais: R$ {total_materiais:.2f}")
-    y -= 20
-    pdf.drawString(300, y, f"Mão de Obra: R$ {pedido.valor_mao_de_obra:.2f}")
-    y -= 25
+        p.drawString(50, y, f"{item.quantidade}x {item.nome}")
+        p.drawRightString(540, y, f"R$ {item.quantidade * item.preco_unitario:.2f}")
+        y -= 20
+        
+    p.line(50, y, 550, y)
+    y -= 30
+    p.setFont("Helvetica-Bold", 14)
+    p.drawString(300, y, f"TOTAL GERAL: R$ {total_geral:.2f}")
     
-    pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawString(300, y, f"TOTAL GERAL: R$ {total_geral:.2f}")
-
-    # 6. Finaliza e empacota o PDF
-    pdf.showPage()
-    pdf.save()
-    buffer.seek(0) # Volta o cursor para o início do arquivo
-
-    # 7. Dispara o arquivo direto para o navegador do cliente!
-    return StreamingResponse(
-        buffer, 
-        media_type="application/pdf", 
-        headers={"Content-Disposition": f"attachment; filename=Orcamento_{pedido.nome_cliente.replace(' ', '_')}.pdf"}
-    )
+    p.showPage()
+    p.save()
+    buffer.seek(0)
+    
+    return StreamingResponse(buffer, media_type="application/pdf")
