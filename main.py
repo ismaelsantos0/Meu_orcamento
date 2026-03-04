@@ -11,11 +11,10 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from passlib.context import CryptContext
 
-# --- CONFIGURAÇÃO DE SEGURANÇA (BCRYPT) ---
-# Usamos o pwd_context para transformar texto puro em hash seguro
+# --- SEGURANÇA ---
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# --- CONEXÃO COM O BANCO DE DADOS ---
+# --- CONEXÃO BANCO ---
 DATABASE_URL = os.getenv("DATABASE_URL")
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
@@ -24,8 +23,7 @@ engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# --- MODELOS (MANTENDO SUA ESTRUTURA EXISTENTE) ---
-
+# --- MODELOS ---
 class Usuario(Base):
     __tablename__ = "usuarios"
     id = Column(Integer, primary_key=True, index=True)
@@ -48,11 +46,9 @@ class Servico(Base):
     preco_base = Column(Float, nullable=False)
     categoria = Column(String, nullable=False)
 
-# Cria as tabelas se não existirem (sem apagar dados)
 Base.metadata.create_all(bind=engine)
 
-# --- SCHEMAS DE VALIDAÇÃO ---
-
+# --- SCHEMAS ---
 class LoginRequest(BaseModel):
     email: str
     senha: str
@@ -70,9 +66,7 @@ class RequisicaoOrcamento(BaseModel):
     itens: list[ItemPedido]
     valor_mao_de_obra: float
 
-# --- INICIALIZAÇÃO DO APP ---
-
-app = FastAPI(title="VERO Smart Systems API")
+app = FastAPI(title="VERO Smart Systems")
 
 app.add_middleware(
     CORSMiddleware,
@@ -89,78 +83,83 @@ def get_db():
     finally:
         db.close()
 
-# --- ROTA DE REPARAÇÃO (SETUP) ---
-# Use esta rota para garantir que o hash da sua senha esteja correto no banco
+# --- ROTA DE SETUP (UPDATE DIRETO) ---
 @app.get("/api/setup-admin")
 def setup_admin(db: Session = Depends(get_db)):
     try:
         email_alvo = "ismaelifrr@gmail.com"
-        usuario = db.query(Usuario).filter(Usuario.email == email_alvo).first()
-        
-        if not usuario:
-            return {"error": "Usuário não encontrado. Verifique o e-mail no banco."}
-
-        # Transformamos o texto puro "Admin@123" em hash bcrypt
-        # Isso evita o erro de 72 bytes porque o hash é gerado do zero
-        usuario.senha = pwd_context.hash("Admin@123")
+        novo_hash = pwd_context.hash("Admin@123")
+        resultado = db.query(Usuario).filter(Usuario.email == email_alvo).update({"senha": novo_hash})
+        if resultado == 0:
+            return {"error": "Usuário não encontrado."}
         db.commit()
-        
-        return {"status": "Sucesso! Senha do Ismael atualizada para Admin@123."}
+        return {"status": "Sucesso! Senha atualizada."}
     except Exception as e:
         db.rollback()
-        return {"error": f"Erro ao processar: {str(e)}"}
+        return {"error": str(e)}
 
 # --- ROTA DE LOGIN ---
-
 @app.post("/api/login")
 def login(dados: LoginRequest, db: Session = Depends(get_db)):
-    email_limpo = dados.email.strip().lower()
-    senha_digitada = dados.senha.strip()
-    
-    usuario = db.query(Usuario).filter(Usuario.email == email_limpo).first()
-    
-    # O verify compara a senha digitada com o hash salvo no banco
-    if not usuario or not pwd_context.verify(senha_digitada, usuario.senha):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, 
-            detail="E-mail ou senha incorretos."
-        )
-    
-    return {
-        "access_token": "vero_token_2026",
-        "user": {"nome": usuario.nome, "email": usuario.email}
-    }
+    user = db.query(Usuario).filter(Usuario.email == dados.email.strip().lower()).first()
+    if not user or not pwd_context.verify(dados.senha.strip(), user.senha):
+        raise HTTPException(status_code=401, detail="Credenciais inválidas")
+    return {"access_token": "vero_auth_2026", "user": {"nome": user.nome, "email": user.email}}
 
-# --- ROTAS DE DADOS ---
-
+# --- DADOS DINÂMICOS ---
 @app.get("/api/servicos")
 def listar_servicos(db: Session = Depends(get_db)):
     return db.query(Servico).all()
 
 @app.get("/api/perfil")
 def obter_perfil(db: Session = Depends(get_db)):
-    return db.query(PerfilEmpresa).first()
+    perfil = db.query(PerfilEmpresa).first()
+    if not perfil:
+        raise HTTPException(status_code=404, detail="Perfil não configurado no banco.")
+    return perfil
 
-# --- GERAÇÃO DE PDF ---
-
+# --- GERAÇÃO DE PDF (100% DINÂMICO) ---
 @app.post("/api/gerar-orcamento")
 async def gerar_orcamento(pedido: RequisicaoOrcamento, db: Session = Depends(get_db)):
+    # Puxa os dados da empresa diretamente da tabela perfil_empresa
     empresa = db.query(PerfilEmpresa).first()
+    
+    if not empresa:
+        raise HTTPException(status_code=400, detail="Erro: Dados da empresa não encontrados no banco.")
+
     total_geral = sum(i.quantidade * i.preco_unitario for i in pedido.itens) + pedido.valor_mao_de_obra
     
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
     
-    # Cabeçalho RR Smart
+    # Cabeçalho usando APENAS as variáveis do banco
     p.setFont("Helvetica-Bold", 16)
-    p.drawString(50, 800, empresa.nome_fantasia.upper() if empresa else "RR SMART SOLUÇÕES")
+    p.drawString(50, 800, empresa.nome_fantasia.upper())
     p.setFont("Helvetica", 10)
-    p.drawString(50, 785, f"WhatsApp: {empresa.telefone if empresa else ''}")
+    p.drawString(50, 785, f"Contato: {empresa.telefone} | Instagram: {empresa.instagram}")
     p.line(50, 775, 550, 775)
     
-    # Conteúdo do orçamento...
+    # Corpo do Orçamento
+    p.setFont("Helvetica-Bold", 12)
     p.drawString(50, 750, f"CLIENTE: {pedido.nome_cliente}")
-    p.drawString(300, 700, f"TOTAL: R$ {total_geral:.2f}")
+    p.drawString(50, 735, f"CATEGORIA: {pedido.categoria_servico}")
+    
+    y = 690
+    p.drawString(50, y, "ITEM")
+    p.drawRightString(540, y, "SUBTOTAL")
+    p.line(50, y-5, 550, y-5)
+    y -= 25
+    
+    for item in pedido.itens:
+        p.setFont("Helvetica", 11)
+        p.drawString(50, y, f"{item.quantidade}x {item.nome}")
+        p.drawRightString(540, y, f"R$ {item.quantidade * item.preco_unitario:.2f}")
+        y -= 20
+        
+    p.line(50, y, 550, y)
+    y -= 30
+    p.setFont("Helvetica-Bold", 14)
+    p.drawString(300, y, f"TOTAL GERAL: R$ {total_geral:.2f}")
     
     p.showPage()
     p.save()
