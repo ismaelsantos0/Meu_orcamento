@@ -1,6 +1,6 @@
 import os
 import io
-import hashlib # A SOLUÇÃO NATIVA E BLINDADA
+import hashlib
 from fastapi import FastAPI, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, text
@@ -11,12 +11,11 @@ from fastapi.responses import StreamingResponse
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
-# --- FUNÇÃO DE HASH INQUEBRÁVEL (SEM LIMITE DE 72 BYTES) ---
+# --- FUNÇÃO DE HASH BLINDADA (SHA-256) ---
 def gerar_hash(senha: str):
-    # Transforma qualquer senha em um código seguro SHA-256
     return hashlib.sha256(senha.encode()).hexdigest()
 
-# --- CONEXÃO BANCO ---
+# --- CONEXÃO BANCO DE DADOS ---
 DATABASE_URL = os.getenv("DATABASE_URL")
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
@@ -25,7 +24,7 @@ engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# --- MODELO EXATAMENTE IGUAL À SUA FOTO ---
+# --- MODELOS (Fiéis ao seu banco de dados) ---
 class Usuario(Base):
     __tablename__ = "usuarios"
     id = Column(Integer, primary_key=True)
@@ -50,7 +49,7 @@ class Servico(Base):
     preco_base = Column(Float)
     categoria = Column(String)
 
-app = FastAPI()
+app = FastAPI(title="VERO Smart Systems")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 def get_db():
@@ -58,21 +57,24 @@ def get_db():
     try: yield db
     finally: db.close()
 
-# --- ROTA DE REPARAÇÃO ---
+# --- ROTA DE REPARAÇÃO (ALVO: vssdamassa) ---
 @app.get("/api/setup-admin")
 def setup_admin():
     with engine.begin() as conn:
         try:
-            # Gera o hash SHA-256 (Impossível dar o erro de 72 bytes aqui)
+            # Gera o hash limpo para Admin@123
             novo_hash = gerar_hash("Admin@123")
             
-            # Grava direto no banco
-            query = text("UPDATE usuarios SET senha = :h WHERE email = 'ismaelifrr@gmail.com'")
-            conn.execute(query, {"h": novo_hash})
+            # Atualiza direto no banco apenas o usuário vssdamassa
+            query = text("UPDATE usuarios SET senha = :h WHERE email = 'vssdamassa@gmail.com'")
+            resultado = conn.execute(query, {"h": novo_hash})
             
-            return {"status": "AMÉM! Bcrypt removido. Senha atualizada com SHA-256."}
+            if resultado.rowcount == 0:
+                return {"error": "Usuário vssdamassa@gmail.com não encontrado no banco."}
+                
+            return {"status": "FEITO! Senha do vssdamassa resetada para Admin@123 com sucesso."}
         except Exception as e:
-            return {"error": f"Erro: {str(e)}"}
+            return {"error": f"Erro fatal: {str(e)}"}
 
 # --- LOGIN ---
 class LoginRequest(BaseModel):
@@ -81,12 +83,12 @@ class LoginRequest(BaseModel):
 
 @app.post("/api/login")
 def login(dados: LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(Usuario).filter(Usuario.email == dados.email.strip().lower()).first()
+    email_limpo = dados.email.strip().lower()
+    user = db.query(Usuario).filter(Usuario.email == email_limpo).first()
     
     if not user:
         raise HTTPException(status_code=401, detail="Usuário não encontrado")
         
-    # Criptografa o que o usuário digitou e compara com o banco
     hash_tentativa = gerar_hash(dados.senha.strip())
     
     if hash_tentativa != user.senha:
@@ -113,11 +115,14 @@ def perfil(db: Session = Depends(get_db)):
 @app.post("/api/gerar-orcamento")
 async def gerar(pedido: dict, db: Session = Depends(get_db)):
     empresa = db.query(PerfilEmpresa).first()
-    if not empresa: raise HTTPException(status_code=400, detail="Perfil ausente no banco")
+    if not empresa: 
+        raise HTTPException(status_code=400, detail="Perfil da empresa ausente no banco.")
     
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
+    # Puxa o nome da empresa dinamicamente
     p.drawString(50, 800, str(empresa.nome_fantasia).upper())
+    p.drawString(50, 785, f"Contato: {empresa.telefone} | Instagram: {empresa.instagram}")
     p.showPage()
     p.save()
     buffer.seek(0)
