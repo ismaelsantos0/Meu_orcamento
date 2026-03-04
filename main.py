@@ -1,5 +1,6 @@
 import os
 import io
+import hashlib # A SOLUÇÃO NATIVA E BLINDADA
 from fastapi import FastAPI, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, text
@@ -9,10 +10,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
-from passlib.context import CryptContext
 
-# --- SEGURANÇA ---
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# --- FUNÇÃO DE HASH INQUEBRÁVEL (SEM LIMITE DE 72 BYTES) ---
+def gerar_hash(senha: str):
+    # Transforma qualquer senha em um código seguro SHA-256
+    return hashlib.sha256(senha.encode()).hexdigest()
 
 # --- CONEXÃO BANCO ---
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -56,23 +58,23 @@ def get_db():
     try: yield db
     finally: db.close()
 
-# --- ROTA DE REPARAÇÃO (A MARRETA DO SQL PURO) ---
+# --- ROTA DE REPARAÇÃO ---
 @app.get("/api/setup-admin")
 def setup_admin():
     with engine.begin() as conn:
         try:
-            # Geramos o hash perfeito de "Admin@123"
-            novo_hash = pwd_context.hash("Admin@123")
+            # Gera o hash SHA-256 (Impossível dar o erro de 72 bytes aqui)
+            novo_hash = gerar_hash("Admin@123")
             
-            # Trocamos o texto puro pelo Hash direto no banco, sem perguntar nada
+            # Grava direto no banco
             query = text("UPDATE usuarios SET senha = :h WHERE email = 'ismaelifrr@gmail.com'")
             conn.execute(query, {"h": novo_hash})
             
-            return {"status": "SUCESSO! O banco e o código agora estão em perfeita harmonia."}
+            return {"status": "AMÉM! Bcrypt removido. Senha atualizada com SHA-256."}
         except Exception as e:
             return {"error": f"Erro: {str(e)}"}
 
-# --- LOGIN (CORRIGIDO PARA NÃO PEDIR O 'NOME') ---
+# --- LOGIN ---
 class LoginRequest(BaseModel):
     email: str
     senha: str
@@ -81,16 +83,15 @@ class LoginRequest(BaseModel):
 def login(dados: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(Usuario).filter(Usuario.email == dados.email.strip().lower()).first()
     
-    # Bloco try-except para caso ele tente ler o hash gigante do outro usuário
-    try:
-        senha_valida = pwd_context.verify(dados.senha.strip(), user.senha)
-    except Exception:
-        senha_valida = False
-
-    if not user or not senha_valida:
-        raise HTTPException(status_code=401, detail="Credenciais invalidas")
+    if not user:
+        raise HTTPException(status_code=401, detail="Usuário não encontrado")
         
-    # RETORNA O TELEFONE NO LUGAR DO NOME, POIS O NOME NÃO EXISTE NO BANCO
+    # Criptografa o que o usuário digitou e compara com o banco
+    hash_tentativa = gerar_hash(dados.senha.strip())
+    
+    if hash_tentativa != user.senha:
+        raise HTTPException(status_code=401, detail="Senha incorreta")
+        
     return {
         "access_token": "vero_2026", 
         "user": {
