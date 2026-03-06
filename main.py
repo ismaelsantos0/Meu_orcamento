@@ -11,15 +11,22 @@ from fastapi.responses import StreamingResponse
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
-# --- BANCO DE DADOS ---
+# --- BANCO DE DADOS (COM PROTEÇÃO TOTAL) ---
 DATABASE_URL = os.getenv("DATABASE_URL")
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-# Conexão direta e simples
-engine = create_engine(DATABASE_URL, pool_pre_ping=True)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+engine = None
+SessionLocal = None
 Base = declarative_base()
+
+try:
+    if DATABASE_URL:
+        engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        print("Conexão com banco configurada.")
+except Exception as e:
+    print(f"Erro inicial de banco: {e}")
 
 class HistoricoOrcamento(Base):
     __tablename__ = "historico_orcamentos"
@@ -29,10 +36,14 @@ class HistoricoOrcamento(Base):
     valor_total = Column(Float)
     data_cadastro = Column(String)
 
-# Cria as tabelas assim que o script carrega
-Base.metadata.create_all(bind=engine)
+# Tenta criar tabelas sem derrubar o servidor
+if engine:
+    try:
+        Base.metadata.create_all(bind=engine)
+    except:
+        pass
 
-app = FastAPI(title="VERO API")
+app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
@@ -42,13 +53,12 @@ app.add_middleware(
 )
 
 def get_db():
+    if not SessionLocal:
+        raise HTTPException(status_code=500, detail="Banco de dados não disponível")
     db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    try: yield db
+    finally: db.close()
 
-# SCHEMAS
 class Item(BaseModel):
     nome: str
     quantidade: int
@@ -60,20 +70,16 @@ class Requisicao(BaseModel):
     itens: list[Item]
     valor_mao_de_obra: float
 
-# --- ROTAS ---
-
 @app.get("/")
-def health():
-    return {"status": "online", "docs": "/docs"}
+def root():
+    return {"status": "VERO Online", "db_connected": engine is not None}
 
 @app.get("/api/dashboard")
 def get_dashboard(db: Session = Depends(get_db)):
     try:
         dados = db.query(HistoricoOrcamento).all()
         faturamento = sum(d.valor_total for d in dados)
-        # Retorna os últimos 5
         recentes = db.query(HistoricoOrcamento).order_by(desc(HistoricoOrcamento.id)).limit(5).all()
-        
         return {
             "faturamento_mes": faturamento,
             "total_orcamentos": len(dados),
@@ -85,24 +91,19 @@ def get_dashboard(db: Session = Depends(get_db)):
 
 @app.post("/api/gerar-orcamento")
 async def gerar(pedido: Requisicao, db: Session = Depends(get_db)):
-    total_materiais = sum(i.quantidade * i.preco_unitario for i in pedido.itens)
-    total_geral = total_materiais + pedido.valor_mao_de_obra
-    
-    # Salva no histórico
+    total = sum(i.quantidade * i.preco_unitario for i in pedido.itens) + pedido.valor_mao_de_obra
     novo = HistoricoOrcamento(
         nome_cliente=pedido.nome_cliente,
         categoria_servico=pedido.categoria_servico,
-        valor_total=total_geral,
+        valor_total=total,
         data_cadastro=datetime.now().strftime("%d/%m/%Y %H:%M")
     )
     db.add(novo)
     db.commit()
-
-    # Gera PDF básico
+    
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
-    p.drawString(100, 800, f"Orcamento: {pedido.nome_cliente}")
-    p.drawString(100, 780, f"Total: R$ {total_geral:.2f}")
+    p.drawString(100, 800, f"Orcamento: {pedido.nome_cliente} | Total: R$ {total:.2f}")
     p.showPage()
     p.save()
     buffer.seek(0)
