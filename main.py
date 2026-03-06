@@ -13,19 +13,17 @@ from reportlab.pdfgen import canvas
 
 # ==========================================
 # IMPORTANDO SEUS SCRIPTS DA PASTA SERVICES
-# (O main.py precisa conhecer suas funções)
 # ==========================================
-# Descomente e ajuste os nomes das funções conforme os seus arquivos reais:
-# from services.cftv_install import calcular_cftv
-# from services.gate_motor_install import calcular_motor
+# Descomente quando seus arquivos estiverem prontos:
+# from services.cftv_install import calcular_cftv_install
 # from services.fence_concertina import calcular_concertina
-# ==========================================
+# from services.gate_motor_install import calcular_motor_install
 
 # --- SEGURANÇA ---
 def gerar_hash(senha: str):
     return hashlib.sha256(senha.encode()).hexdigest()
 
-# --- CONEXÃO BANCO ---
+# --- CONEXÃO BANCO DE DADOS ---
 DATABASE_URL = os.getenv("DATABASE_URL")
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
@@ -34,7 +32,7 @@ engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# --- MODELOS ---
+# --- MODELOS (Tabelas do Banco) ---
 class Usuario(Base):
     __tablename__ = "usuarios"
     id = Column(Integer, primary_key=True)
@@ -67,13 +65,22 @@ def get_db():
     try: yield db
     finally: db.close()
 
-# --- SCHEMAS ---
+# --- SCHEMAS (Entrada de Dados) ---
 class LoginRequest(BaseModel):
     email: str
     senha: str
 
+class PerfilRequest(BaseModel):
+    nome_fantasia: str
+    telefone: str
+    instagram: str
+
+# -----------------------------------------------------
+# O AJUSTE NINJA: Agora aceitamos "id_produto" e o "codigo" não trava mais
+# -----------------------------------------------------
 class ItemPedido(BaseModel):
-    codigo: str
+    codigo: str = "000"     # Se o frontend não mandar o código, ele usa "000" e não trava
+    id_produto: str = "0"   # Aceita de braços abertos o "id_produto" do Lovable
     nome: str
     quantidade: int
     preco_unitario: float
@@ -85,7 +92,7 @@ class RequisicaoOrcamento(BaseModel):
     itens: list[ItemPedido]
     valor_mao_de_obra: float
 
-# --- LOGIN ---
+# --- ROTA: LOGIN ---
 @app.post("/api/login")
 def login(dados: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(Usuario).filter(Usuario.email == dados.email.strip().lower()).first()
@@ -96,34 +103,57 @@ def login(dados: LoginRequest, db: Session = Depends(get_db)):
         "user": {"email": user.email, "telefone": user.telefone, "is_admin": user.is_admin}
     }
 
-# --- DADOS ---
+# --- ROTA: SERVIÇOS (Catálogo) ---
 @app.get("/api/servicos")
-def listar(db: Session = Depends(get_db)):
+def listar_servicos(db: Session = Depends(get_db)):
     return db.query(Servico).all()
 
+# --- ROTAS: PERFIL DA EMPRESA (Configurações) ---
 @app.get("/api/perfil")
-def perfil(db: Session = Depends(get_db)):
+def ler_perfil(db: Session = Depends(get_db)):
     return db.query(PerfilEmpresa).first()
 
-# --- ROTEADOR E GERAÇÃO DE PDF ---
+@app.post("/api/perfil")
+def atualizar_perfil(dados: PerfilRequest, db: Session = Depends(get_db)):
+    perfil = db.query(PerfilEmpresa).first()
+    
+    # Se já existir, atualiza. Se não, cria o primeiro registro.
+    if perfil:
+        perfil.nome_fantasia = dados.nome_fantasia
+        perfil.telefone = dados.telefone
+        perfil.instagram = dados.instagram
+    else:
+        novo_perfil = PerfilEmpresa(
+            nome_fantasia=dados.nome_fantasia, 
+            telefone=dados.telefone, 
+            instagram=dados.instagram
+        )
+        db.add(novo_perfil)
+        
+    db.commit()
+    return {"status": "Configurações salvas com sucesso!"}
+
+# --- ROTA: GERAÇÃO DE ORÇAMENTO (O Roteador e PDF) ---
 @app.post("/api/gerar-orcamento")
 async def gerar_orcamento(pedido: RequisicaoOrcamento, db: Session = Depends(get_db)):
     empresa = db.query(PerfilEmpresa).first()
     if not empresa: 
-        raise HTTPException(status_code=400, detail="Perfil da empresa ausente.")
+        raise HTTPException(status_code=400, detail="Perfil da empresa ausente. Preencha as configurações primeiro.")
     
     categoria = pedido.categoria_servico.lower()
     
     # 1. DELEGAÇÃO: Manda os dados para o arquivo certo na pasta services
     try:
-        # EXEMPLO DE ROTEAMENTO (Você vai plugar suas funções reais aqui):
+        # === DESCOMENTE QUANDO SEUS ARQUIVOS SERVICES ESTIVEREM PRONTOS ===
         # if "cftv" in categoria:
-        #     resultado_calculo = calcular_cftv(pedido.itens, db)
+        #     resultado_calculo = calcular_cftv_install(pedido.itens, db)
         # elif "concertina" in categoria:
         #     resultado_calculo = calcular_concertina(pedido.itens, db)
+        # elif "motor" in categoria:
+        #     resultado_calculo = calcular_motor_install(pedido.itens, db)
         # else:
         
-        # Como as importações ainda estão comentadas, faremos um cálculo padrão genérico por enquanto:
+        # Cálculo genérico temporário para não quebrar o teste do frontend:
         resultado_calculo = {
             "itens_processados": [{"nome": i.nome, "quantidade": i.quantidade, "subtotal": i.quantidade * i.preco_unitario} for i in pedido.itens],
             "total_materiais": sum(i.quantidade * i.preco_unitario for i in pedido.itens),
@@ -138,16 +168,19 @@ async def gerar_orcamento(pedido: RequisicaoOrcamento, db: Session = Depends(get
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
     
+    # Cabeçalho da Empresa
     p.setFont("Helvetica-Bold", 16)
     p.drawString(50, 800, str(empresa.nome_fantasia).upper())
     p.setFont("Helvetica", 10)
     p.drawString(50, 785, f"Contato: {empresa.telefone} | Instagram: {empresa.instagram}")
     p.line(50, 775, 550, 775)
     
+    # Dados do Cliente
     p.setFont("Helvetica-Bold", 12)
     p.drawString(50, 750, f"CLIENTE: {pedido.nome_cliente}")
     p.drawString(50, 735, f"SERVIÇO: {pedido.categoria_servico}")
     
+    # Tabela de Itens
     y = 700
     p.drawString(50, y, "ITEM")
     p.drawRightString(540, y, "VALOR")
@@ -163,6 +196,7 @@ async def gerar_orcamento(pedido: RequisicaoOrcamento, db: Session = Depends(get
     p.line(50, y, 550, y)
     y -= 30
     
+    # Totais
     p.drawString(50, y, "Mão de Obra:")
     p.drawRightString(540, y, f"R$ {resultado_calculo['mao_de_obra']:.2f}")
     y -= 25
