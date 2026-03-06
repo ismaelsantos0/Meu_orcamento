@@ -28,11 +28,24 @@ class HistoricoOrcamento(Base):
     valor_total = Column(Float)
     data_criacao = Column(String)
 
-# Cria a tabela na marra
+# Cria a tabela
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+# ATIVAÇÃO DO DOCS E REDOC
+app = FastAPI(
+    title="VERO API",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
+
+# LIBERAÇÃO TOTAL PARA O LOVABLE
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 def get_db():
     db = SessionLocal()
@@ -50,24 +63,36 @@ class Requisicao(BaseModel):
     itens: list[Item]
     valor_mao_de_obra: float
 
+@app.get("/")
+def home():
+    return {"message": "VERO API Online", "docs": "/docs"}
+
 @app.get("/api/dashboard")
 def dashboard(db: Session = Depends(get_db)):
     orcamentos = db.query(HistoricoOrcamento).all()
     total = len(orcamentos)
     faturamento = sum(o.valor_total for o in orcamentos)
     recentes = db.query(HistoricoOrcamento).order_by(desc(HistoricoOrcamento.id)).limit(5).all()
+    
     return {
         "faturamento_mes": faturamento,
         "total_orcamentos": total,
         "ticket_medio": faturamento / total if total > 0 else 0,
-        "recentes": recentes
+        "recentes": [
+            {
+                "id": o.id,
+                "nome_cliente": o.nome_cliente,
+                "categoria_servico": o.categoria_servico,
+                "valor_total": o.valor_total,
+                "data_criacao": o.data_criacao
+            } for o in recentes
+        ]
     }
 
 @app.post("/api/gerar-orcamento")
 async def gerar(pedido: Requisicao, db: Session = Depends(get_db)):
     total_geral = sum(i.quantidade * i.preco_unitario for i in pedido.itens) + pedido.valor_mao_de_obra
     
-    # Salva
     novo = HistoricoOrcamento(
         nome_cliente=pedido.nome_cliente,
         categoria_servico=pedido.categoria_servico,
@@ -77,7 +102,6 @@ async def gerar(pedido: Requisicao, db: Session = Depends(get_db)):
     db.add(novo)
     db.commit()
 
-    # PDF
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
     p.drawString(100, 800, f"Orcamento: {pedido.nome_cliente}")
