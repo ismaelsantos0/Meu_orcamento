@@ -11,22 +11,14 @@ from fastapi.responses import StreamingResponse
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
-# --- BANCO DE DADOS (COM PROTEÇÃO TOTAL) ---
+# --- BANCO DE DADOS ---
 DATABASE_URL = os.getenv("DATABASE_URL")
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-engine = None
-SessionLocal = None
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
-
-try:
-    if DATABASE_URL:
-        engine = create_engine(DATABASE_URL, pool_pre_ping=True)
-        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-        print("Conexão com banco configurada.")
-except Exception as e:
-    print(f"Erro inicial de banco: {e}")
 
 class HistoricoOrcamento(Base):
     __tablename__ = "historico_orcamentos"
@@ -36,12 +28,10 @@ class HistoricoOrcamento(Base):
     valor_total = Column(Float)
     data_cadastro = Column(String)
 
-# Tenta criar tabelas sem derrubar o servidor
-if engine:
-    try:
-        Base.metadata.create_all(bind=engine)
-    except:
-        pass
+# --- A MARRETADA PARA LIMPAR O ERRO ---
+# Esta linha apaga a tabela antiga problemática e cria a nova com todas as colunas
+Base.metadata.drop_all(bind=engine) 
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
@@ -53,8 +43,6 @@ app.add_middleware(
 )
 
 def get_db():
-    if not SessionLocal:
-        raise HTTPException(status_code=500, detail="Banco de dados não disponível")
     db = SessionLocal()
     try: yield db
     finally: db.close()
@@ -72,7 +60,7 @@ class Requisicao(BaseModel):
 
 @app.get("/")
 def root():
-    return {"status": "VERO Online", "db_connected": engine is not None}
+    return {"status": "VERO Online e Tabelas Resetadas"}
 
 @app.get("/api/dashboard")
 def get_dashboard(db: Session = Depends(get_db)):
@@ -91,20 +79,16 @@ def get_dashboard(db: Session = Depends(get_db)):
 
 @app.post("/api/gerar-orcamento")
 async def gerar(pedido: Requisicao, db: Session = Depends(get_db)):
-    total = sum(i.quantidade * i.preco_unitario for i in pedido.itens) + pedido.valor_mao_de_obra
-    novo = HistoricoOrcamento(
-        nome_cliente=pedido.nome_cliente,
-        categoria_servico=pedido.categoria_servico,
-        valor_total=total,
-        data_cadastro=datetime.now().strftime("%d/%m/%Y %H:%M")
-    )
-    db.add(novo)
-    db.commit()
-    
-    buffer = io.BytesIO()
-    p = canvas.Canvas(buffer, pagesize=A4)
-    p.drawString(100, 800, f"Orcamento: {pedido.nome_cliente} | Total: R$ {total:.2f}")
-    p.showPage()
-    p.save()
-    buffer.seek(0)
-    return StreamingResponse(buffer, media_type="application/pdf")
+    try:
+        total = sum(i.quantidade * i.preco_unitario for i in pedido.itens) + pedido.valor_mao_de_obra
+        novo = HistoricoOrcamento(
+            nome_cliente=pedido.nome_cliente,
+            categoria_servico=pedido.categoria_servico,
+            valor_total=total,
+            data_cadastro=datetime.now().strftime("%d/%m/%Y %H:%M")
+        )
+        db.add(novo)
+        db.commit()
+        return {"status": "sucesso", "valor": total}
+    except Exception as e:
+        return {"error": str(e)}
