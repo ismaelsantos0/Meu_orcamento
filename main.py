@@ -144,7 +144,7 @@ def atualizar_perfil(dados: PerfilRequest, db: Session = Depends(get_db)):
         perfil.telefone = dados.telefone
         perfil.instagram = dados.instagram
     else:
-        novo_perfil = PerfilEmpresa(**dados.model_dump())
+        novo_perfil = PerfilEmpresa(**dados.dict()) # <-- Voltei pro método seguro!
         db.add(novo_perfil)
     db.commit()
     return {"status": "Configurações salvas!"}
