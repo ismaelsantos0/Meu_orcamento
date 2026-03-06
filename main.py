@@ -3,7 +3,7 @@ import io
 from datetime import datetime
 from fastapi import FastAPI, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import create_engine, Column, Integer, String, Float, desc, text
+from sqlalchemy import create_engine, Column, Integer, String, Float, desc
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,25 +16,24 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-# Se não houver banco, o app não crasha, ele avisa
-engine = None
-if DATABASE_URL:
-    engine = create_engine(DATABASE_URL, pool_pre_ping=True)
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-else:
-    print("ERRO: DATABASE_URL não configurada!")
-
+# Cria conexão apenas se a URL existir
+engine = create_engine(DATABASE_URL, pool_pre_ping=True) if DATABASE_URL else None
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine) if engine else None
 Base = declarative_base()
 
 class HistoricoOrcamento(Base):
     __tablename__ = "historico_orcamentos"
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, index=True)
     nome_cliente = Column(String)
     categoria_servico = Column(String)
     valor_total = Column(Float)
     data_criacao = Column(String)
 
-app = FastAPI(title="VERO API")
+# Tenta criar a tabela de forma direta
+if engine:
+    Base.metadata.create_all(bind=engine)
+
+app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,18 +42,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Tenta criar a tabela toda vez que o servidor liga, mas sem travar o app
-@app.on_event("startup")
-def startup():
-    if engine:
-        try:
-            Base.metadata.create_all(bind=engine)
-            print("Tabelas verificadas/criadas com sucesso!")
-        except Exception as e:
-            print(f"Erro ao criar tabelas: {e}")
-
 def get_db():
-    if not engine:
+    if not SessionLocal:
         raise HTTPException(status_code=500, detail="Banco não configurado")
     db = SessionLocal()
     try:
@@ -62,17 +51,29 @@ def get_db():
     finally:
         db.close()
 
+# SCHEMAS PARA NÃO DAR ERRO DE VALIDAÇÃO
+class Item(BaseModel):
+    nome: str
+    quantidade: int
+    preco_unitario: float
+
+class Requisicao(BaseModel):
+    nome_cliente: str
+    categoria_servico: str
+    itens: list[Item]
+    valor_mao_de_obra: float
+
 # --- ROTAS ---
+
+@app.get("/")
+def home():
+    return {"status": "online"}
 
 @app.get("/api/dashboard")
 def dashboard(db: Session = Depends(get_db)):
     try:
-        # Teste de conexão simples
-        db.execute(text("SELECT 1"))
-        
         orcamentos = db.query(HistoricoOrcamento).all()
         faturamento = sum(o.valor_total for o in orcamentos)
-        
         return {
             "faturamento_mes": faturamento,
             "total_orcamentos": len(orcamentos),
@@ -80,17 +81,15 @@ def dashboard(db: Session = Depends(get_db)):
             "recentes": orcamentos[-5:] if orcamentos else []
         }
     except Exception as e:
-        print(f"ERRO DASHBOARD: {e}")
-        return {"error": str(e), "status": "500_internal_db_error"}
+        return {"error": str(e)}
 
 @app.post("/api/gerar-orcamento")
-async def gerar(pedido: dict, db: Session = Depends(get_db)):
-    # Rota ultra simplificada para teste de gravação
+async def gerar(pedido: Requisicao, db: Session = Depends(get_db)):
     try:
-        total = sum(i['quantidade'] * i['preco_unitario'] for i in pedido['itens']) + pedido['valor_mao_de_obra']
+        total = sum(i.quantidade * i.preco_unitario for i in pedido.itens) + pedido.valor_mao_de_obra
         novo = HistoricoOrcamento(
-            nome_cliente=pedido['nome_cliente'],
-            categoria_servico=pedido['categoria_servico'],
+            nome_cliente=pedido.nome_cliente,
+            categoria_servico=pedido.categoria_servico,
             valor_total=total,
             data_criacao=datetime.now().strftime("%d/%m/%Y %H:%M")
         )
@@ -98,4 +97,4 @@ async def gerar(pedido: dict, db: Session = Depends(get_db)):
         db.commit()
         return {"status": "sucesso", "valor": total}
     except Exception as e:
-        return {"status": "erro", "detalhe": str(e)}
+        return {"error": str(e)}
