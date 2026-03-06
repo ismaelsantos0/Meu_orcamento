@@ -144,7 +144,7 @@ def atualizar_perfil(dados: PerfilRequest, db: Session = Depends(get_db)):
         perfil.telefone = dados.telefone
         perfil.instagram = dados.instagram
     else:
-        novo_perfil = PerfilEmpresa(**dados.dict())
+        novo_perfil = PerfilEmpresa(**dados.model_dump())
         db.add(novo_perfil)
     db.commit()
     return {"status": "Configurações salvas!"}
@@ -154,7 +154,7 @@ def atualizar_perfil(dados: PerfilRequest, db: Session = Depends(get_db)):
 async def gerar_orcamento(pedido: RequisicaoOrcamento, db: Session = Depends(get_db)):
     empresa = db.query(PerfilEmpresa).first()
     if not empresa: 
-        raise HTTPException(status_code=400, detail="Perfil da empresa ausente.")
+        raise HTTPException(status_code=400, detail="Perfil da empresa ausente. Preencha as configurações primeiro.")
     
     # Cálculo genérico temporário
     try:
