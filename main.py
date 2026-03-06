@@ -17,12 +17,12 @@ from reportlab.pdfgen import canvas
 def gerar_hash(senha: str):
     return hashlib.sha256(senha.encode()).hexdigest()
 
-# --- CONEXÃO BANCO DE DADOS (Agora com blindagem anti-crash) ---
+# --- CONEXÃO BANCO DE DADOS (Com blindagem anti-crash) ---
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./banco_sobrevivencia.db")
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-# Se for o banco de sobrevivência (SQLite), precisa desse ajuste extra:
+# Ajuste necessário caso o Railway falhe e ele use o banco de sobrevivência (SQLite)
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, connect_args=connect_args)
@@ -69,7 +69,7 @@ async def lifespan(app: FastAPI):
     # Roda exatamente no momento em que o servidor fica online
     Base.metadata.create_all(bind=engine)
     yield
-    # Roda quando o servidor é desligado (não precisamos fazer nada aqui)
+    # Roda quando o servidor é desligado
 
 app = FastAPI(title="VERO Smart Systems", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
