@@ -57,14 +57,16 @@ class HistoricoOrcamento(Base):
     nome_cliente = Column(String)
     categoria_servico = Column(String)
     valor_total = Column(Float)
-    status = Column(String, default="Pendente") # Pendente, Aprovado, Recusado
+    status = Column(String, default="Pendente") 
     data_criacao = Column(String)
-
-# Cria as tabelas se não existirem
-Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="VERO Smart Systems")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+# O AJUSTE: Só cria as tabelas depois que o servidor ligar com sucesso
+@app.on_event("startup")
+def startup_event():
+    Base.metadata.create_all(bind=engine)
 
 def get_db():
     db = SessionLocal()
@@ -115,14 +117,13 @@ def obter_dados_dashboard(db: Session = Depends(get_db)):
     faturamento = sum(o.valor_total for o in orcamentos)
     ticket_medio = faturamento / total_orcamentos if total_orcamentos > 0 else 0
     
-    # Pega só os 5 últimos para a tabela
     recentes = db.query(HistoricoOrcamento).order_by(desc(HistoricoOrcamento.id)).limit(5).all()
     
     return {
         "faturamento_mes": faturamento,
         "total_orcamentos": total_orcamentos,
         "ticket_medio": ticket_medio,
-        "taxa_aprovacao": "100%", # Estático por enquanto
+        "taxa_aprovacao": "100%", 
         "recentes": recentes
     }
 
@@ -144,7 +145,7 @@ def atualizar_perfil(dados: PerfilRequest, db: Session = Depends(get_db)):
         perfil.telefone = dados.telefone
         perfil.instagram = dados.instagram
     else:
-        novo_perfil = PerfilEmpresa(**dados.dict()) # <-- Voltei pro método seguro!
+        novo_perfil = PerfilEmpresa(**dados.dict()) 
         db.add(novo_perfil)
     db.commit()
     return {"status": "Configurações salvas!"}
@@ -156,7 +157,6 @@ async def gerar_orcamento(pedido: RequisicaoOrcamento, db: Session = Depends(get
     if not empresa: 
         raise HTTPException(status_code=400, detail="Perfil da empresa ausente. Preencha as configurações primeiro.")
     
-    # Cálculo genérico temporário
     try:
         resultado_calculo = {
             "itens_processados": [{"nome": i.nome, "quantidade": i.quantidade, "subtotal": i.quantidade * i.preco_unitario} for i in pedido.itens],
@@ -168,7 +168,7 @@ async def gerar_orcamento(pedido: RequisicaoOrcamento, db: Session = Depends(get
 
     total_geral = resultado_calculo["total_materiais"] + resultado_calculo["mao_de_obra"]
 
-    # >>> NOVIDADE: SALVA NO BANCO ANTES DE GERAR O PDF <<<
+    # >>> SALVA NO BANCO ANTES DE GERAR O PDF <<<
     novo_historico = HistoricoOrcamento(
         nome_cliente=pedido.nome_cliente,
         categoria_servico=pedido.categoria_servico,
