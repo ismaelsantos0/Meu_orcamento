@@ -16,24 +16,23 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-# Cria conexão apenas se a URL existir
-engine = create_engine(DATABASE_URL, pool_pre_ping=True) if DATABASE_URL else None
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine) if engine else None
+# Conexão direta e simples
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 class HistoricoOrcamento(Base):
     __tablename__ = "historico_orcamentos"
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True)
     nome_cliente = Column(String)
     categoria_servico = Column(String)
     valor_total = Column(Float)
-    data_criacao = Column(String)
+    data_cadastro = Column(String)
 
-# Tenta criar a tabela de forma direta
-if engine:
-    Base.metadata.create_all(bind=engine)
+# Cria as tabelas assim que o script carrega
+Base.metadata.create_all(bind=engine)
 
-app = FastAPI()
+app = FastAPI(title="VERO API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,15 +42,13 @@ app.add_middleware(
 )
 
 def get_db():
-    if not SessionLocal:
-        raise HTTPException(status_code=500, detail="Banco não configurado")
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
 
-# SCHEMAS PARA NÃO DAR ERRO DE VALIDAÇÃO
+# SCHEMAS
 class Item(BaseModel):
     nome: str
     quantidade: int
@@ -66,35 +63,47 @@ class Requisicao(BaseModel):
 # --- ROTAS ---
 
 @app.get("/")
-def home():
-    return {"status": "online"}
+def health():
+    return {"status": "online", "docs": "/docs"}
 
 @app.get("/api/dashboard")
-def dashboard(db: Session = Depends(get_db)):
+def get_dashboard(db: Session = Depends(get_db)):
     try:
-        orcamentos = db.query(HistoricoOrcamento).all()
-        faturamento = sum(o.valor_total for o in orcamentos)
+        dados = db.query(HistoricoOrcamento).all()
+        faturamento = sum(d.valor_total for d in dados)
+        # Retorna os últimos 5
+        recentes = db.query(HistoricoOrcamento).order_by(desc(HistoricoOrcamento.id)).limit(5).all()
+        
         return {
             "faturamento_mes": faturamento,
-            "total_orcamentos": len(orcamentos),
-            "ticket_medio": faturamento / len(orcamentos) if len(orcamentos) > 0 else 0,
-            "recentes": orcamentos[-5:] if orcamentos else []
+            "total_orcamentos": len(dados),
+            "ticket_medio": faturamento / len(dados) if len(dados) > 0 else 0,
+            "recentes": recentes
         }
     except Exception as e:
         return {"error": str(e)}
 
 @app.post("/api/gerar-orcamento")
 async def gerar(pedido: Requisicao, db: Session = Depends(get_db)):
-    try:
-        total = sum(i.quantidade * i.preco_unitario for i in pedido.itens) + pedido.valor_mao_de_obra
-        novo = HistoricoOrcamento(
-            nome_cliente=pedido.nome_cliente,
-            categoria_servico=pedido.categoria_servico,
-            valor_total=total,
-            data_criacao=datetime.now().strftime("%d/%m/%Y %H:%M")
-        )
-        db.add(novo)
-        db.commit()
-        return {"status": "sucesso", "valor": total}
-    except Exception as e:
-        return {"error": str(e)}
+    total_materiais = sum(i.quantidade * i.preco_unitario for i in pedido.itens)
+    total_geral = total_materiais + pedido.valor_mao_de_obra
+    
+    # Salva no histórico
+    novo = HistoricoOrcamento(
+        nome_cliente=pedido.nome_cliente,
+        categoria_servico=pedido.categoria_servico,
+        valor_total=total_geral,
+        data_cadastro=datetime.now().strftime("%d/%m/%Y %H:%M")
+    )
+    db.add(novo)
+    db.commit()
+
+    # Gera PDF básico
+    buffer = io.BytesIO()
+    p = canvas.Canvas(buffer, pagesize=A4)
+    p.drawString(100, 800, f"Orcamento: {pedido.nome_cliente}")
+    p.drawString(100, 780, f"Total: R$ {total_geral:.2f}")
+    p.showPage()
+    p.save()
+    buffer.seek(0)
+    return StreamingResponse(buffer, media_type="application/pdf")
