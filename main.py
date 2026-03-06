@@ -2,6 +2,7 @@ import os
 import io
 import hashlib
 from datetime import datetime
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, desc
@@ -16,12 +17,15 @@ from reportlab.pdfgen import canvas
 def gerar_hash(senha: str):
     return hashlib.sha256(senha.encode()).hexdigest()
 
-# --- CONEXÃO BANCO DE DADOS ---
-DATABASE_URL = os.getenv("DATABASE_URL")
-if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+# --- CONEXÃO BANCO DE DADOS (Agora com blindagem anti-crash) ---
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./banco_sobrevivencia.db")
+if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+# Se for o banco de sobrevivência (SQLite), precisa desse ajuste extra:
+connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+
+engine = create_engine(DATABASE_URL, pool_pre_ping=True, connect_args=connect_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -50,7 +54,6 @@ class Servico(Base):
     preco_base = Column(Float)
     categoria = Column(String)
 
-# >>> NOVIDADE: A TABELA DO DASHBOARD <<<
 class HistoricoOrcamento(Base):
     __tablename__ = "historico_orcamentos"
     id = Column(Integer, primary_key=True)
@@ -60,13 +63,16 @@ class HistoricoOrcamento(Base):
     status = Column(String, default="Pendente") 
     data_criacao = Column(String)
 
-app = FastAPI(title="VERO Smart Systems")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-
-# O AJUSTE: Só cria as tabelas depois que o servidor ligar com sucesso
-@app.on_event("startup")
-def startup_event():
+# --- O AJUSTE DEFINITIVO: O motor liga antes de acessar o banco ---
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Roda exatamente no momento em que o servidor fica online
     Base.metadata.create_all(bind=engine)
+    yield
+    # Roda quando o servidor é desligado (não precisamos fazer nada aqui)
+
+app = FastAPI(title="VERO Smart Systems", lifespan=lifespan)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 def get_db():
     db = SessionLocal()
@@ -97,26 +103,20 @@ class RequisicaoOrcamento(BaseModel):
     itens: list[ItemPedido]
     valor_mao_de_obra: float
 
-# --- ROTA: LOGIN ---
+# --- ROTAS ---
 @app.post("/api/login")
 def login(dados: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(Usuario).filter(Usuario.email == dados.email.strip().lower()).first()
     if not user or gerar_hash(dados.senha.strip()) != user.senha:
         raise HTTPException(status_code=401, detail="Credenciais incorretas")
-    return {
-        "access_token": "vero_2026", 
-        "user": {"email": user.email, "telefone": user.telefone, "is_admin": user.is_admin}
-    }
+    return {"access_token": "vero_2026", "user": {"email": user.email, "telefone": user.telefone, "is_admin": user.is_admin}}
 
-# --- ROTA: DASHBOARD (Alimenta a Tela Inicial) ---
 @app.get("/api/dashboard")
 def obter_dados_dashboard(db: Session = Depends(get_db)):
     orcamentos = db.query(HistoricoOrcamento).all()
-    
     total_orcamentos = len(orcamentos)
     faturamento = sum(o.valor_total for o in orcamentos)
     ticket_medio = faturamento / total_orcamentos if total_orcamentos > 0 else 0
-    
     recentes = db.query(HistoricoOrcamento).order_by(desc(HistoricoOrcamento.id)).limit(5).all()
     
     return {
@@ -127,12 +127,10 @@ def obter_dados_dashboard(db: Session = Depends(get_db)):
         "recentes": recentes
     }
 
-# --- ROTA: SERVIÇOS (Catálogo) ---
 @app.get("/api/servicos")
 def listar_servicos(db: Session = Depends(get_db)):
     return db.query(Servico).all()
 
-# --- ROTAS: PERFIL DA EMPRESA (Configurações) ---
 @app.get("/api/perfil")
 def ler_perfil(db: Session = Depends(get_db)):
     return db.query(PerfilEmpresa).first()
@@ -150,7 +148,6 @@ def atualizar_perfil(dados: PerfilRequest, db: Session = Depends(get_db)):
     db.commit()
     return {"status": "Configurações salvas!"}
 
-# --- ROTA: GERAÇÃO DE ORÇAMENTO (O Roteador e PDF) ---
 @app.post("/api/gerar-orcamento")
 async def gerar_orcamento(pedido: RequisicaoOrcamento, db: Session = Depends(get_db)):
     empresa = db.query(PerfilEmpresa).first()
@@ -168,7 +165,6 @@ async def gerar_orcamento(pedido: RequisicaoOrcamento, db: Session = Depends(get
 
     total_geral = resultado_calculo["total_materiais"] + resultado_calculo["mao_de_obra"]
 
-    # >>> SALVA NO BANCO ANTES DE GERAR O PDF <<<
     novo_historico = HistoricoOrcamento(
         nome_cliente=pedido.nome_cliente,
         categoria_servico=pedido.categoria_servico,
@@ -179,10 +175,8 @@ async def gerar_orcamento(pedido: RequisicaoOrcamento, db: Session = Depends(get
     db.add(novo_historico)
     db.commit()
 
-    # --- DESENHO DO PDF ---
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
-    
     p.setFont("Helvetica-Bold", 16)
     p.drawString(50, 800, str(empresa.nome_fantasia).upper())
     p.setFont("Helvetica", 10)
@@ -207,11 +201,9 @@ async def gerar_orcamento(pedido: RequisicaoOrcamento, db: Session = Depends(get
         
     p.line(50, y, 550, y)
     y -= 30
-    
     p.drawString(50, y, "Mão de Obra:")
     p.drawRightString(540, y, f"R$ {resultado_calculo['mao_de_obra']:.2f}")
     y -= 25
-    
     p.setFont("Helvetica-Bold", 14)
     p.drawString(300, y, f"TOTAL GERAL: R$ {total_geral:.2f}")
     
