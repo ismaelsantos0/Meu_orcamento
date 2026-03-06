@@ -1,5 +1,6 @@
 import os
 import io
+import hashlib
 from datetime import datetime
 from fastapi import FastAPI, Depends, HTTPException
 from pydantic import BaseModel
@@ -20,6 +21,18 @@ engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
+# --- MODELOS ---
+
+# Tabela do Catálogo
+class Servico(Base):
+    __tablename__ = "servicos"
+    id = Column(Integer, primary_key=True)
+    codigo = Column(String)
+    nome = Column(String)
+    preco_base = Column(Float)
+    categoria = Column(String)
+
+# Tabela do Dashboard
 class HistoricoOrcamento(Base):
     __tablename__ = "historico_orcamentos"
     id = Column(Integer, primary_key=True)
@@ -28,9 +41,7 @@ class HistoricoOrcamento(Base):
     valor_total = Column(Float)
     data_cadastro = Column(String)
 
-# --- A MARRETADA PARA LIMPAR O ERRO ---
-# Esta linha apaga a tabela antiga problemática e cria a nova com todas as colunas
-Base.metadata.drop_all(bind=engine) 
+# Cria/Atualiza as tabelas
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
@@ -47,6 +58,7 @@ def get_db():
     try: yield db
     finally: db.close()
 
+# --- SCHEMAS ---
 class Item(BaseModel):
     nome: str
     quantidade: int
@@ -58,10 +70,18 @@ class Requisicao(BaseModel):
     itens: list[Item]
     valor_mao_de_obra: float
 
+# --- ROTAS ---
+
 @app.get("/")
 def root():
-    return {"status": "VERO Online e Tabelas Resetadas"}
+    return {"status": "VERO Online", "docs": "/docs"}
 
+# ROTA DO CATÁLOGO (A que estava faltando!)
+@app.get("/api/servicos")
+def listar_servicos(db: Session = Depends(get_db)):
+    return db.query(Servico).all()
+
+# ROTA DO DASHBOARD
 @app.get("/api/dashboard")
 def get_dashboard(db: Session = Depends(get_db)):
     try:
@@ -77,6 +97,7 @@ def get_dashboard(db: Session = Depends(get_db)):
     except Exception as e:
         return {"error": str(e)}
 
+# ROTA DE ORÇAMENTO
 @app.post("/api/gerar-orcamento")
 async def gerar(pedido: Requisicao, db: Session = Depends(get_db)):
     try:
@@ -89,6 +110,14 @@ async def gerar(pedido: Requisicao, db: Session = Depends(get_db)):
         )
         db.add(novo)
         db.commit()
-        return {"status": "sucesso", "valor": total}
+
+        buffer = io.BytesIO()
+        p = canvas.Canvas(buffer, pagesize=A4)
+        p.drawString(100, 800, f"VERO - Orcamento: {pedido.nome_cliente}")
+        p.drawString(100, 780, f"Total: R$ {total:.2f}")
+        p.showPage()
+        p.save()
+        buffer.seek(0)
+        return StreamingResponse(buffer, media_type="application/pdf")
     except Exception as e:
         return {"error": str(e)}
