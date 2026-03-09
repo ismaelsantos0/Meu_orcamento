@@ -1,93 +1,33 @@
-from datetime import datetime
-import streamlit as st
+import math
 
-from core.db import get_price
-from core.utils import brl, ceil_div
-from services.base import ServicePlugin
+def calcular_cerca_completa(metros: float, distancia_haste: float, tipo: str, tem_central: bool, precos_db: dict):
+    itens = []
+    
+    # 1. Cálculo de Hastes
+    qtd_hastes = math.ceil(metros / distancia_haste) + 1
+    itens.append({"nome": "Haste de Cerca", "quantidade": qtd_hastes, "preco_unitario": precos_db.get("haste_cerca", 0.0)})
 
-id = "fence_install"
-label = "Cerca elétrica (instalação)"
+    # 2. Lógica do Tipo de Cerca
+    if tipo == "simples":
+        itens.append({"nome": "Fio de Aço (Rolo)", "quantidade": 1, "preco_unitario": precos_db.get("fio_aco", 0.0)})
+        
+    elif tipo == "com_concertina":
+        qtd_rolos = math.ceil(metros / 10)
+        itens.append({"nome": "Rolo Concertina 30cm (10m)", "quantidade": qtd_rolos, "preco_unitario": precos_db.get("concertina_30cm", 0.0)})
+        
+    elif tipo == "concertina_linear":
+        qtd_rolos = math.ceil((metros * 6) / 20)
+        itens.append({"nome": "Rolo Concertina Linear (20m - 6 fios)", "quantidade": qtd_rolos, "preco_unitario": precos_db.get("concertina_linear", 0.0)})
 
+    # 3. Kit Central
+    if tem_central:
+        itens.append({"nome": "Central SH1800", "quantidade": 1, "preco_unitario": precos_db.get("central_sh1800", 0.0)})
+        itens.append({"nome": "Bateria 7A", "quantidade": 1, "preco_unitario": precos_db.get("bateria", 0.0)})
+        itens.append({"nome": "Sirene", "quantidade": 1, "preco_unitario": precos_db.get("sirene", 0.0)})
 
-def render_fields():
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        perimetro = st.number_input("Perímetro (m)", value=36.0, min_value=1.0, step=1.0, key="f_perimetro")
-    with c2:
-        fios = st.number_input("Qtd. fios", value=6, min_value=1, step=1, key="f_fios")
-    with c3:
-        espac = st.number_input("Espaçamento (m)", value=2.5, min_value=0.5, step=0.1, key="f_esp")
-    with c4:
-        cantos = st.number_input("Qtd. cantos", value=4, min_value=1, step=1, key="f_cantos")
-
-    return {"perimetro": float(perimetro), "fios": int(fios), "espacamento": float(espac), "cantos": int(cantos)}
-
-
-def _calc_hastes(perimetro: float, espacamento: float, cantos: int):
-    vaos = ceil_div(perimetro, espacamento)
-    total = vaos + 1
-    retas = max(0, total - cantos)
-    return retas, cantos
-
-
-def compute(conn, inputs: dict):
-    perimetro = float(inputs["perimetro"])
-    fios = int(inputs["fios"])
-    espac = float(inputs["espacamento"])
-    cantos = int(inputs["cantos"])
-
-    items = []
-    subtotal = 0.0
-
-    def add(desc, qty, unit):
-        nonlocal subtotal
-        sub = float(qty) * float(unit)
-        items.append({"desc": desc, "qty": qty, "unit": float(unit), "sub": sub})
-        subtotal += sub
-
-    hastes_retas, hastes_cantos = _calc_hastes(perimetro, espac, cantos)
-    arame_m = perimetro * fios
-    rolos_fio = ceil_div(arame_m, 200)
-
-    add("Haste reta", hastes_retas, get_price(conn, "haste_reta"))
-    add("Haste de canto", hastes_cantos, get_price(conn, "haste_canto"))
-    add("Fio de aço (rolo 200m)", rolos_fio, get_price(conn, "fio_aco_200m"))
-    add("Central SH1800", 1, get_price(conn, "central_sh1800"))
-    add("Bateria", 1, get_price(conn, "bateria"))
-    add("Sirene", 1, get_price(conn, "sirene"))
-
-    add("Kit isoladores (100 un)", 1, get_price(conn, "kit_isoladores"))
-    add("Cabo de alta isolação (50m)", 1, get_price(conn, "cabo_alta_50m"))
-    add("Placas de aviso (kit)", 1, get_price(conn, "kit_placas"))
-    add("Kit aterramento", 1, get_price(conn, "kit_aterramento"))
-
-    base = get_price(conn, "mao_cerca_base")
-    por_m = get_price(conn, "mao_cerca_por_m")
-    if base > 0:
-        add("Mão de obra (taxa base)", 1, base)
-    add("Mão de obra (R$/metro)", round(perimetro, 1), por_m)
-
-    summary_full = (
-        f"Instalação completa em {perimetro:.0f}m, com {fios} fios e hastes a cada {espac}m.\n"
-        "Inclui central, bateria, sirene, aterramento, placas, testes e regulagem."
-    )
-    summary_client = (
-        f"Cerca elétrica em {perimetro:.0f}m ({fios} fios).\n"
-        "Inclui central, bateria, sirene, aterramento, placas e testes finais."
-    )
-
+    total_materiais = sum(i["quantidade"] * i["preco_unitario"] for i in itens)
+    
     return {
-        "id": f"{datetime.now().timestamp()}",
-        "service_id": id,
-        "service_name": label,
-        "service_hint": f"{perimetro:.0f}m • {fios} fios",
-        "inputs": inputs,
-        "items": items,
-        "subtotal": float(subtotal),
-        "subtotal_brl": brl(float(subtotal)),
-        "summary_full": summary_full,
-        "summary_client": summary_client,
+        "itens": itens,
+        "total_materiais": total_materiais
     }
-
-
-plugin = ServicePlugin(id=id, label=label, render_fields=render_fields, compute=compute)
