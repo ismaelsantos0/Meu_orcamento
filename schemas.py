@@ -15,7 +15,7 @@ class Requisicao(BaseModel):
     categoria_servico: str
     itens: List[Item]
     valor_mao_de_obra: float
-    desconto_percentual: Optional[float] = 0.0 # Novo campo
+    desconto_percentual: Optional[float] = 0.0
 
 class RequisicaoCerca(BaseModel):
     nome_cliente: str
@@ -24,3 +24,7 @@ class RequisicaoCerca(BaseModel):
     tipo: str
     tem_central: bool
     valor_mao_de_obra: float
+
+# NOVO: Para atualizar apenas o status
+class AtualizarStatusRequest(BaseModel):
+    status: str
