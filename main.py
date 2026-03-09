@@ -2,7 +2,7 @@ import hashlib
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import engine, Base, SessionLocal
-from models import Usuario, PerfilEmpresa, MaterialBase
+from models import Usuario, PerfilEmpresa, MaterialBase, Servico
 from routers import auth, servicos, dashboard, orcamentos
 
 if engine:
@@ -39,20 +39,35 @@ def startup_db():
         )
         db.add(novo_perfil)
 
-    # 3. Cria Tabela Base de Preços
+    # 3. Cria Tabela Base de Preços Oculta (Para a inteligência do /services)
     if not db.query(MaterialBase).first():
         precos_iniciais = [
-            ("haste_cerca", "Haste de Cerca", 19.00),
+            ("haste_cerca", "Haste de Cerca 1m", 19.00),
             ("haste_canto", "Haste de Canto", 50.00),
             ("fio_aco", "Fio de Aço", 80.00),
             ("central_sh1800", "Central SH1800", 310.00),
-            ("bateria", "Bateria", 83.00),
+            ("bateria", "Bateria 7A", 83.00),
             ("sirene", "Sirene", 2.00),
             ("concertina_30cm", "Concertina 30cm", 90.00),
             ("concertina_linear", "Concertina Linear", 53.00)
         ]
         for slug, nome, preco in precos_iniciais:
             db.add(MaterialBase(slug=slug, nome=nome, preco=preco))
+
+    # 4. Injeta os mesmos produtos no Catálogo Visível (Tabela Servico)
+    if not db.query(Servico).first():
+        catalogo_inicial = [
+            ("CER01", "Haste de Cerca 1m", 19.00, "Cerca"),
+            ("CER02", "Haste de Canto", 50.00, "Cerca"),
+            ("CER03", "Fio de Aço (Rolo)", 80.00, "Cerca"),
+            ("CER04", "Central SH1800", 310.00, "Segurança"),
+            ("CER05", "Bateria 7A", 83.00, "Segurança"),
+            ("CER06", "Sirene", 2.00, "Segurança"),
+            ("CER07", "Rolo Concertina 30cm (10m)", 90.00, "Cerca"),
+            ("CER08", "Rolo Concertina Linear (20m)", 53.00, "Cerca")
+        ]
+        for codigo, nome, preco, categoria in catalogo_inicial:
+            db.add(Servico(codigo=codigo, nome=nome, preco_base=preco, categoria=categoria))
 
     db.commit()
     db.close()
@@ -64,4 +79,4 @@ app.include_router(orcamentos.router)
 
 @app.get("/")
 def health_check():
-    return {"status": "online", "message": "VERO API Organizada"}
+    return {"status": "online", "message": "VERO API Organizada - Rota Híbrida Ativa"}
