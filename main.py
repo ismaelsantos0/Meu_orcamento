@@ -39,22 +39,24 @@ def startup_db():
         )
         db.add(novo_perfil)
 
-    # 3. Cria Tabela Base de Preços Oculta (Para a inteligência do /services)
+    # 3. Cria Tabela Base de Preços Oculta com os Slugs Fidedignos
     if not db.query(MaterialBase).first():
         precos_iniciais = [
             ("haste_cerca", "Haste de Cerca 1m", 19.00),
             ("haste_canto", "Haste de Canto", 50.00),
-            ("fio_aco", "Fio de Aço", 80.00),
+            ("fio_aco", "Fio de Aço (Rolo)", 80.00),
             ("central_sh1800", "Central SH1800", 310.00),
             ("bateria", "Bateria 7A", 83.00),
             ("sirene", "Sirene", 2.00),
-            ("concertina_30cm", "Concertina 30cm", 90.00),
-            ("concertina_linear", "Concertina Linear", 53.00)
+            ("concertina_30cm", "Rolo Concertina 30cm (10m)", 90.00),
+            ("concertina_linear", "Rolo Concertina Linear (20m - 6 fios)", 53.00),
+            ("kit_aterramento", "Kit Aterramento", 45.00)
         ]
         for slug, nome, preco in precos_iniciais:
-            db.add(MaterialBase(slug=slug, nome=nome, preco=preco))
+            if not db.query(MaterialBase).filter(MaterialBase.slug == slug).first():
+                db.add(MaterialBase(slug=slug, nome=nome, preco=preco))
 
-    # 4. Injeta os mesmos produtos no Catálogo Visível (Tabela Servico)
+    # 4. Injeta os produtos no Catálogo Visível
     if not db.query(Servico).first():
         catalogo_inicial = [
             ("CER01", "Haste de Cerca 1m", 19.00, "Cerca"),
@@ -64,10 +66,12 @@ def startup_db():
             ("CER05", "Bateria 7A", 83.00, "Segurança"),
             ("CER06", "Sirene", 2.00, "Segurança"),
             ("CER07", "Rolo Concertina 30cm (10m)", 90.00, "Cerca"),
-            ("CER08", "Rolo Concertina Linear (20m)", 53.00, "Cerca")
+            ("CER08", "Rolo Concertina Linear (20m)", 53.00, "Cerca"),
+            ("CER09", "Kit Aterramento", 45.00, "Segurança")
         ]
         for codigo, nome, preco, categoria in catalogo_inicial:
-            db.add(Servico(codigo=codigo, nome=nome, preco_base=preco, categoria=categoria))
+             if not db.query(Servico).filter(Servico.codigo == codigo).first():
+                db.add(Servico(codigo=codigo, nome=nome, preco_base=preco, categoria=categoria))
 
     db.commit()
     db.close()
@@ -79,4 +83,4 @@ app.include_router(orcamentos.router)
 
 @app.get("/")
 def health_check():
-    return {"status": "online", "message": "VERO API Organizada - Rota Híbrida Ativa"}
+    return {"status": "online", "message": "VERO API - Arquitetura de IDs robusta aplicada!"}
