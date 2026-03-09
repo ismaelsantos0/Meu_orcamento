@@ -1,58 +1,53 @@
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
 from database import get_db
-from models import MaterialBase
-from schemas import MaterialCreate
+from models import PerfilEmpresa
+from pydantic import BaseModel
 
 router = APIRouter()
 
-# Função para identificar o usuário pelo Token
+# Schema para validação dos dados
+class PerfilUpdate(BaseModel):
+    nome_fantasia: str
+    telefone: str
+    instagram: str
+
+# Função para pegar o ID do usuário pelo Token
 def get_user_id(authorization: str = Header(None)):
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Token ausente")
+    if not authorization: raise HTTPException(status_code=401)
     try:
         token = authorization.replace("Bearer ", "")
         return int(token.replace("user_", ""))
     except:
-        raise HTTPException(status_code=401, detail="Token inválido")
+        raise HTTPException(status_code=401)
 
-# LISTAR MATERIAIS DO USUÁRIO
-@router.get("/api/materiais")
-def listar_materiais(db: Session = Depends(get_db), user_id: int = Depends(get_user_id)):
-    return db.query(MaterialBase).filter(MaterialBase.usuario_id == user_id).all()
+# ROTA PARA BUSCAR O PERFIL ATUAL
+@router.get("/api/perfil")
+def buscar_perfil(db: Session = Depends(get_db), user_id: int = Depends(get_user_id)):
+    perfil = db.query(PerfilEmpresa).filter(PerfilEmpresa.usuario_id == user_id).first()
+    if not perfil:
+        return {"nome_fantasia": "", "telefone": "", "instagram": ""}
+    return perfil
 
-# ADICIONAR NOVO MATERIAL AO CATÁLOGO
-@router.post("/api/materiais")
-def adicionar_material(novo_material: MaterialCreate, db: Session = Depends(get_db), user_id: int = Depends(get_user_id)):
-    # Verifica se já existe um material com esse 'slug' (ID interno) para esse usuário
-    existente = db.query(MaterialBase).filter(
-        MaterialBase.slug == novo_material.slug, 
-        MaterialBase.usuario_id == user_id
-    ).first()
+# ROTA PARA SALVAR OU ATUALIZAR O PERFIL
+@router.post("/api/perfil")
+def salvar_perfil(dados: PerfilUpdate, db: Session = Depends(get_db), user_id: int = Depends(get_user_id)):
+    perfil = db.query(PerfilEmpresa).filter(PerfilEmpresa.usuario_id == user_id).first()
     
-    if existente:
-        # Se já existe, apenas atualiza o preço e o nome
-        existente.nome = novo_material.nome
-        existente.preco = novo_material.preco
+    if perfil:
+        # Atualiza o existente
+        perfil.nome_fantasia = dados.nome_fantasia
+        perfil.telefone = dados.telefone
+        perfil.instagram = dados.instagram
     else:
-        # Se não existe, cria um novo
-        material = MaterialBase(
+        # Cria um novo para este usuário
+        novo_perfil = PerfilEmpresa(
             usuario_id=user_id,
-            nome=novo_material.nome,
-            slug=novo_material.slug,
-            preco=novo_material.preco
+            nome_fantasia=dados.nome_fantasia,
+            telefone=dados.telefone,
+            instagram=dados.instagram
         )
-        db.add(material)
+        db.add(novo_perfil)
     
     db.commit()
-    return {"message": "Material salvo com sucesso no seu catálogo VERO"}
-
-# EXCLUIR MATERIAL DO CATÁLOGO
-@router.delete("/api/materiais/{material_id}")
-def deletar_material(material_id: int, db: Session = Depends(get_db), user_id: int = Depends(get_user_id)):
-    item = db.query(MaterialBase).filter(MaterialBase.id == material_id, MaterialBase.usuario_id == user_id).first()
-    if not item:
-        raise HTTPException(status_code=404, detail="Material não encontrado")
-    db.delete(item)
-    db.commit()
-    return {"message": "Material removido"}
+    return {"message": "Perfil atualizado com sucesso!"}
