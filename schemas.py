@@ -25,6 +25,11 @@ class RequisicaoCerca(BaseModel):
     tem_central: bool
     valor_mao_de_obra: float
 
-# NOVO: Para atualizar apenas o status
 class AtualizarStatusRequest(BaseModel):
     status: str
+
+# NOVO: Schema para o Catálogo de Materiais
+class MaterialCreate(BaseModel):
+    nome: str
+    slug: str
+    preco: float
