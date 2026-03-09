@@ -14,35 +14,48 @@ class UserAuth(BaseModel):
 @router.post("/api/register")
 def register(dados: UserAuth, db: Session = Depends(get_db)):
     email_limpo = dados.email.lower().strip()
+    
     if db.query(Usuario).filter(Usuario.email == email_limpo).first():
-        raise HTTPException(status_code=400, detail="E-mail já cadastrado.")
+        raise HTTPException(status_code=400, detail="Este e-mail já está cadastrado no VERO.")
 
+    # Criar usuário
     hash_senha = hashlib.sha256(dados.senha.encode()).hexdigest()
-    novo_user = Usuario(email=email_limpo, senha=hash_senha)
-    db.add(novo_user)
+    novo_usuario = Usuario(email=email_limpo, senha=hash_senha)
+    db.add(novo_usuario)
     db.commit()
-    db.refresh(novo_user)
+    db.refresh(novo_usuario)
 
-    # ONBOARDING: Injeta materiais padrão para o novo usuário
+    # ONBOARDING: Injetar catálogo padrão para funcionalidade imediata
     materiais_padrao = [
         ("haste_cerca", "Haste de Cerca 1m", 19.00),
         ("fio_aco", "Fio de Aço (Rolo 200m)", 80.00),
         ("concertina_30cm", "Concertina 30cm (10m)", 90.00),
-        ("central_sh1800", "Central SH1800", 310.00),
+        ("concertina_linear", "Concertina Linear (20m)", 53.00),
+        ("central_sh1800", "Central Eletrificadora", 310.00),
         ("bateria", "Bateria 7A", 83.00),
         ("sirene", "Sirene", 20.00),
-        ("kit_aterramento", "Kit Aterramento", 45.00)
+        ("kit_aterramento", "Kit Aterramento", 45.00),
+        ("fio_alta_tensao", "Cabo Alta Tensão (50m)", 90.00)
     ]
+    
     for slug, nome, preco in materiais_padrao:
-        db.add(MaterialBase(usuario_id=novo_user.id, slug=slug, nome=nome, preco=preco))
+        db.add(MaterialBase(usuario_id=novo_usuario.id, slug=slug, nome=nome, preco=preco))
     
     db.commit()
-    return {"message": "Conta criada! Catálogo inicial configurado."}
+    return {"message": "Conta criada com sucesso! Seu catálogo inicial já está pronto."}
 
 @router.post("/api/login")
 def login(dados: UserAuth, db: Session = Depends(get_db)):
     hash_senha = hashlib.sha256(dados.senha.encode()).hexdigest()
-    user = db.query(Usuario).filter(Usuario.email == dados.email.lower().strip(), Usuario.senha == hash_senha).first()
+    user = db.query(Usuario).filter(
+        Usuario.email == dados.email.lower().strip(), 
+        Usuario.senha == hash_senha
+    ).first()
+    
     if not user:
-        raise HTTPException(status_code=401, detail="E-mail ou senha incorretos.")
-    return {"access_token": f"user_{user.id}", "user": {"email": user.email}}
+        raise HTTPException(status_code=401, detail="Credenciais incorretas.")
+        
+    return {
+        "access_token": f"user_{user.id}", 
+        "user": {"email": user.email, "id": user.id}
+    }
