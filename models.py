@@ -23,3 +23,17 @@ class HistoricoOrcamento(Base):
     categoria_servico = Column(String)
     valor_total = Column(Float)
     data_cadastro = Column(String)
+
+class PerfilEmpresa(Base):
+    __tablename__ = "perfil_empresa"
+    id = Column(Integer, primary_key=True)
+    nome_fantasia = Column(String)
+    telefone = Column(String)
+    instagram = Column(String)
+
+class MaterialBase(Base):
+    __tablename__ = "materiais_base"
+    id = Column(Integer, primary_key=True)
+    slug = Column(String, unique=True)
+    nome = Column(String)
+    preco = Column(Float)
