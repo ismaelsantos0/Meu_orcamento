@@ -15,7 +15,6 @@ router = APIRouter()
 @router.post("/api/previa-cerca")
 async def previa_cerca(pedido: RequisicaoCerca, db: Session = Depends(get_db)):
     materiais_db = db.query(MaterialBase).all()
-    # Agora passamos o Dicionário completo com NOME e PREÇO linkado pelo SLUG (ID)
     dicionario_materiais = {m.slug: {"nome": m.nome, "preco": m.preco} for m in materiais_db}
 
     calculo = calcular_cerca_completa(
@@ -25,53 +24,38 @@ async def previa_cerca(pedido: RequisicaoCerca, db: Session = Depends(get_db)):
         tem_central=pedido.tem_central,
         materiais_db=dicionario_materiais
     )
-    
-    itens_formatados = []
-    for item in calculo["itens"]:
-        itens_formatados.append({
-            "nome": item["nome"],
-            "quantidade": item["quantidade"],
-            "preco_unitario": item["preco_unitario"]
-        })
-        
-    return {
-        "itens": itens_formatados,
-        "total_materiais": calculo["total_materiais"]
-    }
-
-@router.post("/api/gerar-orcamento-cerca")
-async def gerar_cerca(pedido: RequisicaoCerca, db: Session = Depends(get_db)):
-    materiais_db = db.query(MaterialBase).all()
-    dicionario_materiais = {m.slug: {"nome": m.nome, "preco": m.preco} for m in materiais_db}
-
-    calculo = calcular_cerca_completa(
-        metros=pedido.metros, 
-        distancia_haste=pedido.distancia_haste, 
-        tipo=pedido.tipo, 
-        tem_central=pedido.tem_central,
-        materiais_db=dicionario_materiais
-    )
-    
-    categoria = f"Cerca - {pedido.tipo.replace('_', ' ').title()}"
-    return gerar_pdf_e_salvar(pedido.nome_cliente, categoria, calculo["itens"], calculo["total_materiais"], pedido.valor_mao_de_obra, db)
+    return {"itens": calculo["itens"]}
 
 @router.post("/api/gerar-orcamento")
 async def gerar(pedido: Requisicao, db: Session = Depends(get_db)):
-    total_materiais = sum(i.quantidade * i.preco_unitario for i in pedido.itens)
-    return gerar_pdf_e_salvar(pedido.nome_cliente, pedido.categoria_servico, pedido.itens, total_materiais, pedido.valor_mao_de_obra, db)
-
-def gerar_pdf_e_salvar(nome_cliente, categoria, itens, total_materiais, mao_de_obra, db):
-    total_geral = total_materiais + mao_de_obra
+    subtotal = sum(i.quantidade * i.preco_unitario for i in pedido.itens)
     
+    # Cálculo do Desconto
+    valor_desconto = 0
+    if pedido.desconto_percentual and pedido.desconto_percentual > 0:
+        valor_desconto = subtotal * (pedido.desconto_percentual / 100)
+    
+    total_final = subtotal - valor_desconto
+    
+    return gerar_pdf_e_salvar(
+        pedido.nome_cliente, 
+        pedido.categoria_servico, 
+        pedido.itens, 
+        subtotal, 
+        valor_desconto, 
+        total_final, 
+        db
+    )
+
+def gerar_pdf_e_salvar(nome_cliente, categoria, itens, subtotal, valor_desconto, total_final, db):
     perfil = db.query(PerfilEmpresa).first()
-    nome_empresa = perfil.nome_fantasia if perfil else "EMPRESA NÃO CADASTRADA"
-    contato_empresa = perfil.telefone if perfil else "Sem Contato"
-    insta_empresa = perfil.instagram if perfil else ""
+    empresa_nome = perfil.nome_fantasia if perfil else "VERO - Sistema de Orçamentos"
+    empresa_contato = perfil.telefone if perfil else ""
 
     novo = HistoricoOrcamento(
         nome_cliente=nome_cliente,
         categoria_servico=categoria,
-        valor_total=total_geral,
+        valor_total=total_final,
         data_cadastro=datetime.now().strftime("%d/%m/%Y %H:%M")
     )
     db.add(novo)
@@ -81,20 +65,23 @@ def gerar_pdf_e_salvar(nome_cliente, categoria, itens, total_materiais, mao_de_o
     p = canvas.Canvas(buffer, pagesize=A4)
     largura, altura = A4
 
-    p.setFont("Helvetica-Bold", 18)
-    p.drawString(50, altura - 50, nome_empresa.upper())
+    # Cabeçalho VERO
+    p.setFont("Helvetica-Bold", 20)
+    p.drawString(50, altura - 50, "VERO") 
     p.setFont("Helvetica", 10)
-    texto_contato = f"Contato: {contato_empresa}"
-    if insta_empresa:
-        texto_contato += f" | Instagram: {insta_empresa}"
-    p.drawString(50, altura - 65, texto_contato)
-    p.line(50, altura - 85, largura - 50, altura - 85)
+    p.drawString(50, altura - 65, empresa_nome)
+    if empresa_contato:
+        p.drawRightString(largura - 50, altura - 65, f"Contato: {empresa_contato}")
+    
+    p.line(50, altura - 75, largura - 50, altura - 75)
 
     p.setFont("Helvetica-Bold", 12)
-    p.drawString(50, altura - 110, f"CLIENTE: {nome_cliente.upper()}")
-    p.drawString(50, altura - 125, f"SERVIÇO: {categoria.upper()}")
-    
-    y = altura - 160
+    p.drawString(50, altura - 100, f"CLIENTE: {nome_cliente.upper()}")
+    p.drawString(50, altura - 115, f"PROPOSTA: {categoria.upper()}")
+    p.drawRightString(largura - 50, altura - 100, f"DATA: {datetime.now().strftime('%d/%m/%Y')}")
+
+    # Tabela
+    y = altura - 150
     p.setFont("Helvetica-Bold", 10)
     p.drawString(50, y, "DESCRIÇÃO")
     p.drawString(350, y, "QTD")
@@ -105,33 +92,41 @@ def gerar_pdf_e_salvar(nome_cliente, categoria, itens, total_materiais, mao_de_o
     y -= 25
     p.setFont("Helvetica", 10)
     for item in itens:
-        nome = item["nome"] if isinstance(item, dict) else item.nome
-        qtd = item["quantidade"] if isinstance(item, dict) else item.quantidade
-        preco = item["preco_unitario"] if isinstance(item, dict) else item.preco_unitario
+        nome = item.nome if hasattr(item, 'nome') else item["nome"]
+        qtd = item.quantidade if hasattr(item, 'quantidade') else item["quantidade"]
+        preco = item.preco_unitario if hasattr(item, 'preco_unitario') else item["preco_unitario"]
+        item_total = float(qtd) * float(preco)
         
-        subtotal = qtd * preco
-        p.drawString(50, y, nome[:45])
+        p.drawString(50, y, str(nome)[:45])
         p.drawString(350, y, str(qtd))
         p.drawString(420, y, f"R$ {preco:.2f}")
-        p.drawString(500, y, f"R$ {subtotal:.2f}")
+        p.drawString(500, y, f"R$ {item_total:.2f}")
         y -= 20
-        
-        if y < 100:
+        if y < 150:
             p.showPage()
             y = altura - 50
 
+    # Resumo de Valores no Final
     y -= 20
     p.line(350, y + 10, largura - 50, y + 10)
-    p.drawString(350, y, "Total Materiais:")
-    p.drawRightString(largura - 50, y, f"R$ {total_materiais:.2f}")
-    y -= 15
-    p.drawString(350, y, "Mão de Obra:")
-    p.drawRightString(largura - 50, y, f"R$ {mao_de_obra:.2f}")
+    p.setFont("Helvetica", 10)
+    p.drawString(350, y, "Subtotal:")
+    p.drawRightString(largura - 50, y, f"R$ {subtotal:.2f}")
     
-    y -= 25
-    p.setFont("Helvetica-Bold", 12)
-    p.drawString(350, y, "TOTAL GERAL:")
-    p.drawRightString(largura - 50, y, f"R$ {total_geral:.2f}")
+    if valor_desconto > 0:
+        y -= 15
+        p.setFont("Helvetica-Bold", 10)
+        p.setFillColorRGB(0.8, 0, 0) # Vermelho para o desconto
+        p.drawString(350, y, f"Desconto Applied:")
+        p.drawRightString(largura - 50, y, f"- R$ {valor_desconto:.2f}")
+        p.setFillColorRGB(0, 0, 0) # Volta para preto
+
+    y -= 30
+    p.setFont("Helvetica-Bold", 14)
+    p.drawRightString(largura - 50, y, f"TOTAL FINAL: R$ {total_final:.2f}")
+    
+    p.setFont("Helvetica-Oblique", 8)
+    p.drawString(50, 30, "Gerado pelo Sistema VERO.")
 
     p.showPage()
     p.save()
