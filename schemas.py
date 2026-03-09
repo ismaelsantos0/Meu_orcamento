@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 
 class LoginRequest(BaseModel):
     email: str
@@ -15,6 +15,7 @@ class Requisicao(BaseModel):
     categoria_servico: str
     itens: List[Item]
     valor_mao_de_obra: float
+    desconto_percentual: Optional[float] = 0.0 # Novo campo
 
 class RequisicaoCerca(BaseModel):
     nome_cliente: str
