@@ -23,6 +23,7 @@ class HistoricoOrcamento(Base):
     categoria_servico = Column(String)
     valor_total = Column(Float)
     data_cadastro = Column(String)
+    status = Column(String, default="Pendente") # NOVO: Status do orçamento
 
 class PerfilEmpresa(Base):
     __tablename__ = "perfil_empresa"
