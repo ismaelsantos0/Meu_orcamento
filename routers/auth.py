@@ -15,4 +15,16 @@ def login(dados: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(Usuario).filter(Usuario.email == dados.email.strip().lower()).first()
     if not user or gerar_hash(dados.senha.strip()) != user.senha:
         raise HTTPException(status_code=401, detail="Credenciais incorretas")
-    return {"access_token": "vero_2026", "user": {"email": user.email, "is_admin": user.is_admin}}
+    
+    # Em um SaaS real, aqui retornamos um JWT. Para o VERO, enviaremos o ID para o Lovable gerenciar
+    return {
+        "access_token": f"user_{user.id}", 
+        "user": {"id": user.id, "email": user.email}
+    }
+
+# Função auxiliar para as outras rotas saberem quem é o usuário
+def get_current_user_id(token: str):
+    try:
+        return int(token.replace("user_", ""))
+    except:
+        raise HTTPException(status_code=401, detail="Usuário não autenticado")
