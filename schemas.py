@@ -15,3 +15,12 @@ class Requisicao(BaseModel):
     categoria_servico: str
     itens: List[Item]
     valor_mao_de_obra: float
+
+# NOVO: Molde para o cálculo automático de cerca
+class RequisicaoCerca(BaseModel):
+    nome_cliente: str
+    metros: float
+    distancia_haste: float
+    tipo: str  # "simples", "com_concertina" ou "concertina_linear"
+    tem_central: bool
+    valor_mao_de_obra: float
