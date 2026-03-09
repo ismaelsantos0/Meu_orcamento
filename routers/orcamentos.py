@@ -12,22 +12,20 @@ from services.fence import calcular_cerca_completa
 
 router = APIRouter()
 
-# --- ROTA NOVA: Apenas devolve a lista calculada para o Frontend (Sem PDF) ---
 @router.post("/api/previa-cerca")
 async def previa_cerca(pedido: RequisicaoCerca, db: Session = Depends(get_db)):
-    # Busca os preços dinâmicos no banco
     materiais_db = db.query(MaterialBase).all()
-    dicionario_precos = {m.slug: m.preco for m in materiais_db}
+    # Agora passamos o Dicionário completo com NOME e PREÇO linkado pelo SLUG (ID)
+    dicionario_materiais = {m.slug: {"nome": m.nome, "preco": m.preco} for m in materiais_db}
 
     calculo = calcular_cerca_completa(
         metros=pedido.metros, 
         distancia_haste=pedido.distancia_haste, 
         tipo=pedido.tipo, 
         tem_central=pedido.tem_central,
-        precos_db=dicionario_precos
+        materiais_db=dicionario_materiais
     )
     
-    # Formata exatamente como o frontend espera para colocar no carrinho
     itens_formatados = []
     for item in calculo["itens"]:
         itens_formatados.append({
@@ -41,34 +39,30 @@ async def previa_cerca(pedido: RequisicaoCerca, db: Session = Depends(get_db)):
         "total_materiais": calculo["total_materiais"]
     }
 
-# --- ROTA DE PDF DIRETO DA CERCA (Mantida como opção) ---
 @router.post("/api/gerar-orcamento-cerca")
 async def gerar_cerca(pedido: RequisicaoCerca, db: Session = Depends(get_db)):
     materiais_db = db.query(MaterialBase).all()
-    dicionario_precos = {m.slug: m.preco for m in materiais_db}
+    dicionario_materiais = {m.slug: {"nome": m.nome, "preco": m.preco} for m in materiais_db}
 
     calculo = calcular_cerca_completa(
         metros=pedido.metros, 
         distancia_haste=pedido.distancia_haste, 
         tipo=pedido.tipo, 
         tem_central=pedido.tem_central,
-        precos_db=dicionario_precos
+        materiais_db=dicionario_materiais
     )
     
     categoria = f"Cerca - {pedido.tipo.replace('_', ' ').title()}"
     return gerar_pdf_e_salvar(pedido.nome_cliente, categoria, calculo["itens"], calculo["total_materiais"], pedido.valor_mao_de_obra, db)
 
-# --- ROTA PRINCIPAL: Orçamento do Carrinho (Gera o PDF Final) ---
 @router.post("/api/gerar-orcamento")
 async def gerar(pedido: Requisicao, db: Session = Depends(get_db)):
     total_materiais = sum(i.quantidade * i.preco_unitario for i in pedido.itens)
     return gerar_pdf_e_salvar(pedido.nome_cliente, pedido.categoria_servico, pedido.itens, total_materiais, pedido.valor_mao_de_obra, db)
 
-# --- FUNÇÃO DE GERAÇÃO DE PDF (Reutilizável) ---
 def gerar_pdf_e_salvar(nome_cliente, categoria, itens, total_materiais, mao_de_obra, db):
     total_geral = total_materiais + mao_de_obra
     
-    # Busca o Perfil da Empresa
     perfil = db.query(PerfilEmpresa).first()
     nome_empresa = perfil.nome_fantasia if perfil else "EMPRESA NÃO CADASTRADA"
     contato_empresa = perfil.telefone if perfil else "Sem Contato"
