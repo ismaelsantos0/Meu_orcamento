@@ -12,7 +12,7 @@ from fastapi.responses import StreamingResponse
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
-# Importe o seu serviço (ajuste o caminho se necessário)
+# Se você já tiver a função de cálculo pronta, importe aqui:
 # from services.fence import calcular_cerca_completa 
 
 # --- BANCO DE DADOS ---
@@ -44,9 +44,18 @@ class HistoricoOrcamento(Base):
     valor_total = Column(Float)
     data_cadastro = Column(String)
 
+# A TABELA DO CATÁLOGO QUE HAVIA FALTADO
+class Servico(Base):
+    __tablename__ = "servicos"
+    id = Column(Integer, primary_key=True)
+    codigo = Column(String)
+    nome = Column(String)
+    preco_base = Column(Float)
+    categoria = Column(String)
+
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI()
+app = FastAPI(title="VERO API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -63,7 +72,7 @@ def get_db():
 
 # --- CRIAÇÃO AUTOMÁTICA DO ADMIN ---
 @app.on_event("startup")
-def criar_admin_padrao():
+def startup_db():
     db = SessionLocal()
     admin_existente = db.query(Usuario).filter(Usuario.email == "admin@vero.com").first()
     if not admin_existente:
@@ -74,7 +83,6 @@ def criar_admin_padrao():
         )
         db.add(novo_admin)
         db.commit()
-        print("Usuário Admin recriado com sucesso!")
     db.close()
 
 # --- SCHEMAS ---
@@ -100,8 +108,12 @@ def login(dados: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(Usuario).filter(Usuario.email == dados.email.strip().lower()).first()
     if not user or gerar_hash(dados.senha.strip()) != user.senha:
         raise HTTPException(status_code=401, detail="Credenciais incorretas")
-    
     return {"access_token": "vero_2026", "user": {"email": user.email, "is_admin": user.is_admin}}
+
+# A ROTA DO CATÁLOGO QUE HAVIA FALTADO
+@app.get("/api/servicos")
+def listar_servicos(db: Session = Depends(get_db)):
+    return db.query(Servico).all()
 
 @app.get("/api/dashboard")
 def get_dashboard(db: Session = Depends(get_db)):
@@ -134,9 +146,9 @@ async def gerar(pedido: Requisicao, db: Session = Depends(get_db)):
 
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
-    # Aqui vai o layout do PDF da RR Smart Soluções que fizemos antes
     p.drawString(100, 800, f"VERO - Orcamento: {pedido.nome_cliente}")
-    p.drawString(100, 780, f"Total: R$ {total_geral:.2f}")
+    p.drawString(100, 780, f"Contato: (95) 98418-7832")
+    p.drawString(100, 760, f"Total: R$ {total_geral:.2f}")
     p.showPage()
     p.save()
     buffer.seek(0)
